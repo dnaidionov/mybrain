@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mybrain_postgres
+    environment:
+      POSTGRES_DB: mybrain
+      POSTGRES_USER: mybrain
+      POSTGRES_PASSWORD: mybrain
+    ports:
+      - "5433:5432"
+    volumes:
+      - mybrain_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mybrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mcp:
+    build: .
+    container_name: mybrain_mcp
+    environment:
+      MCP_TRANSPORT: http
+      PORT: "8787"
+      DATABASE_URL: postgresql://mybrain:mybrain@postgres:5432/mybrain
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    ports:
+      - "8787:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8787/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mybrain_data:

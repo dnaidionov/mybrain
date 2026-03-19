@@ -6,6 +6,7 @@
   "keywords": ["knowledge-base", "memory", "semantic-search", "mcp", "pgvector", "postgresql"],
   "skills": [
     "./skills/mybrain-setup",
-    "./skills/mybrain-overview"
+    "./skills/mybrain-overview",
+    "./skills/mybrain-init"
   ]
 }
