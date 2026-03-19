@@ -8,8 +8,10 @@ description: Use when users ask about MyBrain, what it does, how it works, what 
 MyBrain is a personal knowledge base with semantic search. It stores thoughts, ideas, notes, and context in a local PostgreSQL database with vector embeddings, making everything searchable by meaning -- not just keywords.
 
 It works as an MCP (Model Context Protocol) server, accessible from:
-- **Claude Code CLI** -- via stdio transport
+- **Claude Code CLI** -- via stdio transport (native) or HTTP transport (containerized)
 - **Claude Desktop app (claude.ai)** -- via Streamable HTTP transport through a Cloudflare Tunnel
+
+The recommended setup is containerized via `/mybrain-init`, which scaffolds a project-local brain with Podman Compose (PostgreSQL + MCP server). For native or Claude Desktop setups, use `/mybrain-setup`.
 
 ## How It Works
 
@@ -63,9 +65,15 @@ These work in both Claude Code and Claude Desktop:
 ## Architecture
 
 ```
+Container mode (recommended):
+Claude Code ──HTTP──> mybrain_mcp (port 8787) ──> mybrain_postgres
+                                               ──> OpenRouter (embeddings)
+
+Native mode:
 Claude Code CLI ──stdio──> server.mjs ──> PostgreSQL (mybrain)
                                       ──> OpenRouter (embeddings)
 
+Claude Desktop:
 Claude Desktop ──HTTPS──> Cloudflare Tunnel ──> server.mjs (HTTP :8787)
                                             ──> PostgreSQL (mybrain)
                                             ──> OpenRouter (embeddings)

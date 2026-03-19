@@ -2,62 +2,78 @@
 
 Personal knowledge base with semantic search for Claude.
 
-Store thoughts, ideas, notes, and context in a local PostgreSQL database with vector embeddings. Search by meaning, not just keywords. Works with **Claude Code CLI** and **Claude Desktop** (claude.ai).
+Store thoughts, ideas, notes, and context in PostgreSQL with vector embeddings. Search by meaning, not just keywords. Works with **Claude Code CLI** and **Claude Desktop** (claude.ai).
 
-## Quick Start
+## Quick Start (containers)
 
-### Step 1: Clone the repo
+The fastest way to get started. No Node.js install, no PostgreSQL install, no build step.
 
-```bash
-git clone https://github.com/robertsfeir/mybrain.git
+```
+/mybrain-init
 ```
 
-### Step 2: Add it as a Claude Code plugin
+This scaffolds a project-local brain in `.mybrain/`, wires it into `.mcp.json`, and starts the containers. Just provide your OpenRouter API key.
 
-```bash
-claude plugins add ./mybrain
+### Multiple brains
+
+You can run multiple brains per project. Each init creates a named instance with its own database and port:
+
+```
+/mybrain-init    # creates .mybrain/default/  (port 8787)
+/mybrain-init    # creates .mybrain/research/ (port 8788)
 ```
 
-If you cloned it somewhere else, use the full path:
+Each brain gets its own entry in `.mcp.json` (`mybrain`, `mybrain-research`, etc.).
+
+### Manual container setup
 
 ```bash
-claude plugins add /full/path/to/mybrain
+cd templates
+
+# Add your OpenRouter API key
+cp .env.example .env
+# Edit .env
+
+# Start everything
+podman compose up -d
 ```
 
-### Step 3: Run the setup wizard
+Register the MCP server:
 
-Open Claude Code and say:
+```bash
+claude mcp add --transport http --scope user mybrain http://localhost:8787/mcp
+```
+
+## Full Setup (native, no containers)
+
+For native installation with more options (local PostgreSQL, Claude Desktop via Cloudflare Tunnel):
 
 ```
 /mybrain-setup
 ```
 
-Claude will walk you through everything step by step -- database, API key, Claude Desktop access, all of it. Just answer the questions.
+Claude walks you through everything step by step.
 
 ## What It Does
 
 - **4 MCP tools:** capture thoughts, semantic search, browse recent, get stats
-- **Local PostgreSQL** with pgvector for storage and vector search
-- **OpenRouter** for embedding generation (text-embedding-3-small)
+- **PostgreSQL** with pgvector for storage and vector search
+- **OpenRouter** for embedding generation (text-embedding-3-small, fractions of a cent per call)
 - **Optional Cloudflare Tunnel** for Claude Desktop access via HTTPS
-
-## Requirements
-
-- macOS (Linux support possible but launchd steps need adaptation)
-- Node.js 18+
-- PostgreSQL with pgvector extension
-- OpenRouter API key (https://openrouter.ai)
-- Cloudflare account + domain (only if you want Claude Desktop access)
 
 ## Architecture
 
 ```
-Claude Code CLI --stdio--> server.mjs --> PostgreSQL (local)
-                                      --> OpenRouter (embeddings)
+Claude Code CLI ──stdio──> server.mjs ──> PostgreSQL
+                                      ──> OpenRouter (embeddings)
 
-Claude Desktop --HTTPS--> Cloudflare Tunnel --> server.mjs (HTTP)
-                                            --> PostgreSQL (local)
-                                            --> OpenRouter (embeddings)
+Container mode:
+Claude Code ──HTTP──> mybrain_mcp (port 8787) ──> mybrain_postgres
+                                               ──> OpenRouter (embeddings)
+
+Claude Desktop ──HTTPS──> Cloudflare Tunnel ──> server.mjs (HTTP)
+                                            ──> PostgreSQL
+                                            ──> OpenRouter (embeddings)
 ```
 
 ## Plugin Structure
@@ -66,13 +82,28 @@ Claude Desktop --HTTPS--> Cloudflare Tunnel --> server.mjs (HTTP)
 .claude-plugin/
   plugin.json                 # Plugin manifest
 skills/
-  mybrain-setup/SKILL.md      # Interactive setup wizard
+  mybrain-init/SKILL.md       # Quick scaffolding (containers)
+  mybrain-setup/SKILL.md      # Full setup wizard (native + Desktop)
   mybrain-overview/SKILL.md   # How it works, tools, usage
 templates/
   server.mjs                  # MCP server (dual mode: stdio + HTTP)
   package.json                # Node.js dependencies
   schema.sql                  # PostgreSQL schema with pgvector
+  Dockerfile                  # Container image
+  compose.yml                 # PostgreSQL + MCP server services
+  .env.example                # Environment template
 ```
+
+## Requirements
+
+**Container setup** (recommended):
+- Podman (or Docker)
+
+**Native setup:**
+- Node.js 18+
+- PostgreSQL with pgvector
+- OpenRouter API key (https://openrouter.ai)
+- Cloudflare account + domain (only for Claude Desktop access)
 
 ## License
 
