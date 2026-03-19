@@ -6,19 +6,33 @@ Store thoughts, ideas, notes, and context in a local PostgreSQL database with ve
 
 ## Quick Start
 
-Point Claude Code at this repo:
+### Step 1: Clone the repo
 
 ```bash
-claude plugins add /path/to/mybrain
+git clone https://github.com/robertsfeir/mybrain.git
 ```
 
-Then say:
+### Step 2: Add it as a Claude Code plugin
+
+```bash
+claude plugins add ./mybrain
+```
+
+If you cloned it somewhere else, use the full path:
+
+```bash
+claude plugins add /full/path/to/mybrain
+```
+
+### Step 3: Run the setup wizard
+
+Open Claude Code and say:
 
 ```
 /mybrain-setup
 ```
 
-Claude will walk you through setup step by step.
+Claude will walk you through everything step by step -- database, API key, Claude Desktop access, all of it. Just answer the questions.
 
 ## What It Does
 
