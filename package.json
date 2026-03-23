@@ -1,0 +1,22 @@
+{
+  "name": "mybrain",
+  "version": "1.0.0",
+  "description": "Personal semantic thought storage and retrieval MCP server with vector embeddings and ltree scoping",
+  "main": "server.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "keywords": ["mcp", "brain", "semantic-search", "embeddings"],
+  "author": {
+    "name": "Robert Sfeir",
+    "email": "robert@sfeir.design"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "express": "^5.2.1",
+    "pg": "^8.20.0",
+    "pgvector": "^0.2.1"
+  }
+}

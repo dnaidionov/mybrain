@@ -1,17 +1,22 @@
 ---
 name: mybrain-overview
-description: Use when users ask about MyBrain, what it does, how it works, what tools are available, or how to use the personal knowledge base. Covers architecture, tools, and usage.
+description: Use when users ask about MyBrain, what it does, how it works, what tools are available, or how to use the personal knowledge base. Covers architecture, tools, deployment modes, and usage.
 ---
 
 # MyBrain -- Overview
 
-MyBrain is a personal knowledge base with semantic search. It stores thoughts, ideas, notes, and context in a local PostgreSQL database with vector embeddings, making everything searchable by meaning -- not just keywords.
+MyBrain is a personal knowledge base with semantic search. It stores thoughts, ideas, notes, and context in PostgreSQL with vector embeddings, making everything searchable by meaning -- not just keywords.
 
-It works as an MCP (Model Context Protocol) server, accessible from:
-- **Claude Code CLI** -- via stdio transport (native) or HTTP transport (containerized)
-- **Claude Desktop app (claude.ai)** -- via Streamable HTTP transport through a Cloudflare Tunnel
+It works as an MCP (Model Context Protocol) server, accessible from Claude Code CLI and Claude Desktop.
 
-The recommended setup is containerized via `/mybrain-init`, which scaffolds a project-local brain with Podman Compose (PostgreSQL + MCP server). For native or Claude Desktop setups, use `/mybrain-setup`.
+## Deployment Modes
+
+| Mode | Database | Best For |
+|------|----------|----------|
+| **Docker** | Local PostgreSQL + pgvector in containers | Self-contained, no external dependencies |
+| **RDS** | Shared AWS RDS with ltree scoping | Teams, multi-project, persistent cloud storage |
+
+Run `/mybrain-setup` to install either mode.
 
 ## How It Works
 
@@ -19,41 +24,35 @@ The recommended setup is containerized via `/mybrain-init`, which scaffolds a pr
 
 1. You say "remember this: ..." to Claude
 2. Claude calls `capture_thought` with your text
-3. The server sends your text to OpenRouter (`text-embedding-3-small`) which returns a 1536-dimension vector representing the semantic meaning
-4. The text, vector, and metadata are stored in PostgreSQL
-5. The HNSW index on the embedding column indexes it for fast search
+3. The server sends text to OpenRouter (`text-embedding-3-small`) for a 1536-dim vector
+4. Text, vector, metadata, and scope are stored in PostgreSQL
+5. HNSW index on the embedding column enables fast search
 
 ### Searching
 
 1. You ask "what do I know about X?"
 2. Claude calls `search_thoughts` with your query
-3. The server sends your query to OpenRouter to get its vector
-4. PostgreSQL uses cosine distance (`<=>`) to compare your query vector against all stored vectors
-5. The HNSW index makes this fast (approximate nearest neighbor, not full scan)
-6. Results come back sorted by similarity (1.0 = identical meaning, 0.0 = unrelated)
+3. Query is embedded via OpenRouter, then matched using `match_thoughts_scored()`
+4. Three-axis scoring: **(3.0 * relevance) + (2.0 * importance) + (0.5 * recency)**
+5. Results return sorted by combined score
 
-### What hits OpenRouter (costs money)
+### ltree Scoping
 
-- `capture_thought` -- one embedding call per save
-- `search_thoughts` -- one embedding call per search
+When `BRAIN_SCOPE` is set (e.g. `personal`, `myproject.app`), all queries filter by scope. This lets multiple users or projects share one database without interference.
 
-### What stays local (free)
-
-- `browse_thoughts` -- pure SQL, lists recent thoughts
-- `brain_stats` -- pure SQL, counts and aggregations
+- Docker mode: scope is optional (single-user, single database)
+- RDS mode: scope is required (shared database, multi-tenant)
 
 ## Tools
 
-| Tool | Description | Uses OpenRouter |
-|------|-------------|-----------------|
-| `capture_thought` | Save a thought with optional metadata | Yes |
-| `search_thoughts` | Semantic search across all thoughts | Yes |
-| `browse_thoughts` | List recent thoughts, filter by metadata | No |
-| `brain_stats` | Total count, date range, top metadata keys | No |
+| Tool | Description | Uses OpenRouter | Cost |
+|------|-------------|-----------------|------|
+| `capture_thought` | Save a thought with metadata | Yes | ~$0.0001 |
+| `search_thoughts` | Semantic search with scored ranking | Yes | ~$0.0001 |
+| `browse_thoughts` | List recent thoughts, filter by metadata | No | Free |
+| `brain_stats` | Total count, date range, top metadata | No | Free |
 
 ## Usage Examples
-
-These work in both Claude Code and Claude Desktop:
 
 - "Remember this: Sarah mentioned she wants to start a consulting business"
 - "What do I know about Sarah?"
@@ -65,36 +64,26 @@ These work in both Claude Code and Claude Desktop:
 ## Architecture
 
 ```
-Container mode (recommended):
-Claude Code ──HTTP──> mybrain_mcp (port 8787) ──> mybrain_postgres
-                                               ──> OpenRouter (embeddings)
+Docker mode:
+Claude Code --HTTP--> mybrain_mcp (port 8787) --> mybrain_postgres
+                                              --> OpenRouter (embeddings)
 
-Native mode:
-Claude Code CLI ──stdio──> server.mjs ──> PostgreSQL (mybrain)
-                                      ──> OpenRouter (embeddings)
+RDS mode:
+Claude Code --stdio--> server.mjs --> AWS RDS (projects_brain)
+                                  --> OpenRouter (embeddings)
 
-Claude Desktop:
-Claude Desktop ──HTTPS──> Cloudflare Tunnel ──> server.mjs (HTTP :8787)
-                                            ──> PostgreSQL (mybrain)
-                                            ──> OpenRouter (embeddings)
+Claude Desktop (either mode):
+Claude Desktop --HTTPS--> Cloudflare Tunnel --> server.mjs (HTTP :8787)
 ```
 
-### Key components
+## Schema
 
-| Component | Purpose |
-|-----------|---------|
-| `server.mjs` | MCP server -- dual mode: stdio (CLI) or HTTP (Desktop) |
-| PostgreSQL + pgvector | Storage + vector similarity search |
-| OpenRouter | Embedding generation (text-embedding-3-small, 1536 dims) |
-| Cloudflare Tunnel | HTTPS proxy so Claude Desktop can reach localhost |
-| launchd agents | Keep the HTTP server and tunnel running in the background |
+The database uses the full atelier brain schema:
+- **thoughts** table with ltree scope, thought_type, importance, status
+- **thought_relations** for typed edges between thoughts
+- **match_thoughts_scored()** -- three-axis scoring function
+- **HNSW index** on embeddings, **GiST index** on scope, **GIN index** on metadata
 
 ## State
 
-All data lives in the `thoughts` table in your local PostgreSQL `mybrain` database. There is no cloud dependency for storage -- OpenRouter is only used for generating embeddings.
-
-The database has:
-- **HNSW index** on embeddings for fast vector search
-- **GIN index** on metadata for fast JSON filtering
-- **B-tree index** on created_at for fast chronological browsing
-- **Auto-updating** `updated_at` trigger
+All data lives in PostgreSQL. OpenRouter is only used for generating embeddings -- no thought content leaves your database.

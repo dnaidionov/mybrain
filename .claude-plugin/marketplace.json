@@ -1,0 +1,16 @@
+{
+  "name": "mybrain",
+  "description": "Personal semantic thought storage and retrieval for Claude Code with vector embeddings, ltree scoping, and three-axis scoring",
+  "owner": {
+    "name": "Robert Sfeir",
+    "email": "robert@sfeir.design"
+  },
+  "plugins": [
+    {
+      "name": "mybrain",
+      "version": "1.0.0",
+      "source": "./",
+      "description": "Personal semantic thought storage and retrieval with vector embeddings and ltree scoping"
+    }
+  ]
+}

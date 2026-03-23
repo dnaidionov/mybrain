@@ -1,76 +1,213 @@
--- MyBrain database schema
--- Run this against your mybrain database:
+-- MyBrain Database Schema
+-- Full schema with ltree scoping, three-axis scoring, and vector search
+-- Compatible with both local Docker and shared RDS deployments
+--
+-- Run against your database:
 --   psql -d mybrain -f schema.sql
 
--- Enable vector extension (requires pgvector installed)
-CREATE EXTENSION IF NOT EXISTS vector;
+-- =============================================================================
+-- Extensions
+-- =============================================================================
 
--- Thoughts table
-CREATE TABLE IF NOT EXISTS thoughts (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  content text NOT NULL,
-  embedding vector(1536),
-  metadata jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS ltree;
+
+-- =============================================================================
+-- Enums
+-- =============================================================================
+
+CREATE TYPE thought_type AS ENUM (
+  'decision', 'preference', 'lesson', 'rejection',
+  'drift', 'correction', 'insight', 'reflection'
 );
 
--- HNSW index for fast approximate nearest neighbor vector search
-CREATE INDEX IF NOT EXISTS thoughts_embedding_idx
-  ON thoughts USING hnsw (embedding vector_cosine_ops);
+CREATE TYPE source_agent AS ENUM (
+  'eva', 'cal', 'robert', 'sable', 'colby',
+  'roz', 'poirot', 'agatha', 'distillator', 'ellis'
+);
 
--- GIN index for fast JSONB metadata filtering
-CREATE INDEX IF NOT EXISTS thoughts_metadata_idx
-  ON thoughts USING gin (metadata);
+CREATE TYPE source_phase AS ENUM (
+  'design', 'build', 'qa', 'review', 'reconciliation', 'setup'
+);
 
--- B-tree index for fast chronological browsing
-CREATE INDEX IF NOT EXISTS thoughts_created_at_idx
-  ON thoughts (created_at DESC);
+CREATE TYPE thought_status AS ENUM (
+  'active', 'superseded', 'invalidated', 'expired', 'conflicted'
+);
 
--- Auto-update the updated_at timestamp on row changes
+CREATE TYPE relation_type AS ENUM (
+  'supersedes', 'triggered_by', 'evolves_from',
+  'contradicts', 'supports', 'synthesized_from'
+);
+
+-- =============================================================================
+-- Configuration Tables
+-- =============================================================================
+
+CREATE TABLE thought_type_config (
+  thought_type thought_type PRIMARY KEY,
+  default_ttl_days INTEGER,
+  default_importance FLOAT NOT NULL DEFAULT 0.5,
+  description TEXT
+);
+
+INSERT INTO thought_type_config VALUES
+  ('decision',    NULL, 0.9,  'Architectural or product decisions'),
+  ('preference',  NULL, 1.0,  'Human preferences and HALT resolutions'),
+  ('lesson',      365,  0.7,  'Retro learnings and patterns'),
+  ('rejection',   180,  0.5,  'Alternatives considered and discarded'),
+  ('drift',       90,   0.8,  'Spec/UX drift findings'),
+  ('correction',  90,   0.7,  'Fixes applied after drift detection'),
+  ('insight',     180,  0.6,  'Mid-task discoveries'),
+  ('reflection',  NULL, 0.85, 'Consolidation-generated synthesis');
+
+CREATE TABLE brain_config (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  brain_enabled BOOLEAN NOT NULL DEFAULT false,
+  consolidation_interval_minutes INTEGER NOT NULL DEFAULT 30,
+  consolidation_min_thoughts INTEGER NOT NULL DEFAULT 3,
+  consolidation_max_thoughts INTEGER NOT NULL DEFAULT 20,
+  conflict_detection_enabled BOOLEAN NOT NULL DEFAULT true,
+  conflict_duplicate_threshold FLOAT NOT NULL DEFAULT 0.9,
+  conflict_candidate_threshold FLOAT NOT NULL DEFAULT 0.7,
+  conflict_llm_enabled BOOLEAN NOT NULL DEFAULT true,
+  default_scope ltree DEFAULT 'default'
+);
+
+INSERT INTO brain_config DEFAULT VALUES;
+
+-- =============================================================================
+-- Core Tables
+-- =============================================================================
+
+CREATE TABLE thoughts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  content TEXT NOT NULL,
+  embedding vector(1536),
+  metadata JSONB DEFAULT '{}',
+  thought_type thought_type NOT NULL,
+  source_agent source_agent NOT NULL,
+  source_phase source_phase NOT NULL,
+  importance FLOAT NOT NULL CHECK (importance >= 0 AND importance <= 1),
+  trigger_event TEXT,
+  status thought_status NOT NULL DEFAULT 'active',
+  scope ltree[] DEFAULT ARRAY['default']::ltree[],
+  invalidated_at TIMESTAMPTZ,
+  last_accessed_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE thought_relations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  source_id UUID NOT NULL REFERENCES thoughts(id) ON DELETE CASCADE,
+  target_id UUID NOT NULL REFERENCES thoughts(id) ON DELETE CASCADE,
+  relation_type relation_type NOT NULL,
+  context TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (source_id, target_id, relation_type)
+);
+
+-- =============================================================================
+-- Indexes
+-- =============================================================================
+
+CREATE INDEX thoughts_embedding_idx ON thoughts USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX thoughts_metadata_idx ON thoughts USING gin (metadata);
+CREATE INDEX thoughts_scope_idx ON thoughts USING gist (scope);
+CREATE INDEX thoughts_status_idx ON thoughts (status);
+CREATE INDEX thoughts_type_idx ON thoughts (thought_type);
+CREATE INDEX thoughts_created_idx ON thoughts (created_at DESC);
+CREATE INDEX thoughts_agent_idx ON thoughts (source_agent);
+CREATE INDEX thoughts_invalidated_idx ON thoughts (invalidated_at) WHERE invalidated_at IS NOT NULL;
+
+CREATE INDEX relations_source_idx ON thought_relations (source_id);
+CREATE INDEX relations_target_idx ON thought_relations (target_id);
+CREATE INDEX relations_type_idx ON thought_relations (relation_type);
+
+-- =============================================================================
+-- Triggers
+-- =============================================================================
+
 CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS trigger AS $$
+RETURNS TRIGGER AS $$
 BEGIN
-  new.updated_at = now();
-  RETURN new;
+  NEW.updated_at = now();
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS thoughts_updated_at ON thoughts;
 CREATE TRIGGER thoughts_updated_at
   BEFORE UPDATE ON thoughts
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Semantic search function
--- Returns thoughts ranked by cosine similarity to a query embedding
-CREATE OR REPLACE FUNCTION match_thoughts(
+-- =============================================================================
+-- Three-Axis Scoring Function
+-- =============================================================================
+-- Formula: score = (0.5 * recency_decay) + (2.0 * importance) + (3.0 * cosine_similarity)
+-- Where: recency_decay = 0.995 ^ hours_since_last_access
+
+CREATE OR REPLACE FUNCTION match_thoughts_scored(
   query_embedding vector(1536),
-  match_threshold float DEFAULT 0.7,
-  match_count int DEFAULT 10,
-  filter jsonb DEFAULT '{}'::jsonb
+  similarity_threshold FLOAT DEFAULT 0.2,
+  max_results INTEGER DEFAULT 10,
+  metadata_filter JSONB DEFAULT '{}',
+  scope_filter ltree DEFAULT NULL,
+  include_invalidated BOOLEAN DEFAULT false
 )
 RETURNS TABLE (
-  id uuid,
-  content text,
-  metadata jsonb,
-  similarity float,
-  created_at timestamptz
-)
-LANGUAGE plpgsql
-AS $$
+  id UUID,
+  content TEXT,
+  metadata JSONB,
+  thought_type thought_type,
+  source_agent source_agent,
+  source_phase source_phase,
+  importance FLOAT,
+  status thought_status,
+  scope ltree[],
+  created_at TIMESTAMPTZ,
+  invalidated_at TIMESTAMPTZ,
+  similarity FLOAT,
+  recency_score FLOAT,
+  combined_score FLOAT
+) AS $$
 BEGIN
+  IF query_embedding IS NULL THEN
+    RAISE EXCEPTION 'query_embedding must not be NULL';
+  END IF;
+  IF max_results < 0 THEN
+    RAISE EXCEPTION 'max_results must be non-negative, got %', max_results;
+  END IF;
+  IF similarity_threshold < 0 OR similarity_threshold > 1 THEN
+    RAISE EXCEPTION 'similarity_threshold must be between 0 and 1, got %', similarity_threshold;
+  END IF;
+
   RETURN QUERY
   SELECT
     t.id,
     t.content,
     t.metadata,
-    (1 - (t.embedding <=> query_embedding))::float AS similarity,
-    t.created_at
+    t.thought_type,
+    t.source_agent,
+    t.source_phase,
+    t.importance,
+    t.status,
+    t.scope,
+    t.created_at,
+    t.invalidated_at,
+    (1 - (t.embedding <=> query_embedding))::FLOAT AS similarity,
+    POWER(0.995, EXTRACT(EPOCH FROM (now() - COALESCE(t.last_accessed_at, t.created_at))) / 3600)::FLOAT AS recency_score,
+    (
+      0.5 * POWER(0.995, EXTRACT(EPOCH FROM (now() - COALESCE(t.last_accessed_at, t.created_at))) / 3600) +
+      2.0 * t.importance +
+      3.0 * (1 - (t.embedding <=> query_embedding))
+    )::FLOAT AS combined_score
   FROM thoughts t
-  WHERE 1 - (t.embedding <=> query_embedding) > match_threshold
-  AND (filter = '{}'::jsonb OR t.metadata @> filter)
-  ORDER BY t.embedding <=> query_embedding
-  LIMIT match_count;
+  WHERE
+    (1 - (t.embedding <=> query_embedding)) >= similarity_threshold
+    AND (include_invalidated OR t.status = 'active')
+    AND (metadata_filter = '{}' OR t.metadata @> metadata_filter)
+    AND (scope_filter IS NULL OR t.scope @> ARRAY[scope_filter])
+  ORDER BY combined_score DESC
+  LIMIT max_results;
 END;
-$$;
+$$ LANGUAGE plpgsql;
