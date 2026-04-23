@@ -25,10 +25,10 @@ All Docker artifacts live in `templates/`. The `compose.yml` there runs two serv
 
 ```bash
 cd templates
-OPENROUTER_API_KEY=sk-or-... podman compose up -d
+OPENROUTER_API_KEY=sk-or-... docker compose up -d   # or: podman compose / nerdctl compose
 ```
 
-The schema is auto-applied on first run via the `docker-entrypoint-initdb.d` mount. To reset: `podman compose down -v && podman compose up -d`.
+The schema is auto-applied on first run via the `docker-entrypoint-initdb.d` mount. To reset: `docker compose down -v && docker compose up -d` (substitute your compose command).
 
 ## Registering with Claude Code (stdio / RDS mode)
 

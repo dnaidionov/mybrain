@@ -152,12 +152,12 @@ Merge with existing entries -- do not overwrite other MCP servers.
 
 ### D7: Start and Verify
 
+Use the compose command you detected and stored in D1 (e.g. `podman compose`, `docker compose`, or `nerdctl compose`):
+
 ```bash
 cd .mybrain/<name> && <compose-cmd> up -d
 <compose-cmd> ps  # wait for healthy
 ```
-
-(Replace `<compose-cmd>` with the detected compose command from D1, e.g. `podman compose` or `docker compose`.)
 
 Restart Claude Code. Test: "How many thoughts do I have?"
 
