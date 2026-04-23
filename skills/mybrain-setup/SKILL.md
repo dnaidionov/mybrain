@@ -23,12 +23,21 @@ Ask the user: **"Do you want to run MyBrain locally with Docker, or connect to a
 
 ### D1: Prerequisites
 
-Verify these are installed. If any are missing, give the install command and wait for confirmation.
+**Detect the container manager.** Run these checks in order and use the first one that succeeds:
 
-| Dependency | Check | Install (macOS) |
-|------------|-------|-----------------|
-| Podman or Docker | `podman --version` or `docker --version` | `brew install podman` |
-| Node.js (v18+) | `node --version` | `brew install node` |
+1. `podman compose version` → use `podman compose`
+2. `docker compose version` → use `docker compose`
+3. `nerdctl compose version` → use `nerdctl compose`
+4. `podman --version` → use `podman compose` (may need `podman-compose` installed separately)
+5. `docker --version` → use `docker compose` (may need Compose plugin installed separately)
+
+If none are found, tell the user no supported container manager was detected and offer two options:
+- Install Podman: `brew install podman` (macOS) / see https://podman.io/getting-started/installation
+- Switch to RDS mode, which needs only Node.js (no containers)
+
+Store the detected compose command (e.g. `podman compose`) and use it for all subsequent steps.
+
+Also verify Node.js v18+ is installed (`node --version`). If missing: `brew install node`.
 
 ### D2: Get OpenRouter API Key
 
@@ -131,12 +140,12 @@ Add the brain to `.mcp.json` in the project root (create if needed):
 
 For `default`:
 ```json
-{ "mcpServers": { "mybrain": { "url": "http://localhost:8787/mcp" } } }
+{ "mcpServers": { "mybrain": { "type": "http", "url": "http://localhost:8787/mcp" } } }
 ```
 
 For named brains (e.g. `research`):
 ```json
-{ "mcpServers": { "mybrain-research": { "url": "http://localhost:8788/mcp" } } }
+{ "mcpServers": { "mybrain-research": { "type": "http", "url": "http://localhost:8788/mcp" } } }
 ```
 
 Merge with existing entries -- do not overwrite other MCP servers.
@@ -144,9 +153,11 @@ Merge with existing entries -- do not overwrite other MCP servers.
 ### D7: Start and Verify
 
 ```bash
-cd .mybrain/<name> && podman compose up -d
-podman compose ps  # wait for healthy
+cd .mybrain/<name> && <compose-cmd> up -d
+<compose-cmd> ps  # wait for healthy
 ```
+
+(Replace `<compose-cmd>` with the detected compose command from D1, e.g. `podman compose` or `docker compose`.)
 
 Restart Claude Code. Test: "How many thoughts do I have?"
 
