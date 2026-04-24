@@ -124,24 +124,19 @@ async function extractInsights(conversationText, apiKey, model, messageCount = 1
   const maxInsights = Math.ceil(messageCount / 3) + 3;
   const jsonMode = JSON_MODE_MODELS.has(model);
 
-  const typeGuidance = `thought_type must be one of: decision|preference|lesson|rejection|drift|correction|insight|reflection|fact
-Importance guidance by type (0.0–1.0): decision=0.7-0.9, preference=0.8-1.0, lesson=0.6-0.8, rejection=0.5-0.7, insight=0.5-0.7, reflection=0.7-0.9, fact=0.9-1.0, drift=0.7-0.8, correction=0.6-0.8`;
-
-  const systemPrompt = jsonMode
-    ? `You extract knowledge worth saving in a personal knowledge base.
-Analyze the conversation and capture everything genuinely worth keeping — up to ${maxInsights} items for a conversation of this length. Only capture what you actually find; do not pad to reach the limit.
-Only capture: architectural decisions, rejected alternatives with reasoning, explicit user preferences, non-obvious lessons or patterns, important discoveries, persistent personal facts (subscriptions, reference info), personal reflections.
-Do NOT capture: greetings, step-by-step explanations, trivial confirmations, things the user already knows, summaries of what was done.
-Return a JSON object with a single key "insights" containing an array. Each item: {"content":"...","thought_type":"...","importance":0.0,"metadata":{}}
-${typeGuidance}
+  const returnFormat = jsonMode
+    ? `Return a JSON object with a single key "insights" containing an array. Each item: {"content":"...","thought_type":"...","importance":0.0,"metadata":{}}
 If nothing worth capturing, return {"insights": []}.`
-    : `You extract knowledge worth saving in a personal knowledge base.
+    : `Return ONLY a raw JSON array with no markdown, no code fences, no explanation. Each item: {"content":"...","thought_type":"...","importance":0.0,"metadata":{}}
+If nothing worth capturing, return [].`;
+
+  const systemPrompt = `You extract knowledge worth saving in a personal knowledge base.
 Analyze the conversation and capture everything genuinely worth keeping — up to ${maxInsights} items for a conversation of this length. Only capture what you actually find; do not pad to reach the limit.
 Only capture: architectural decisions, rejected alternatives with reasoning, explicit user preferences, non-obvious lessons or patterns, important discoveries, persistent personal facts (subscriptions, reference info), personal reflections.
 Do NOT capture: greetings, step-by-step explanations, trivial confirmations, things the user already knows, summaries of what was done.
-Return ONLY a raw JSON array with no markdown, no code fences, no explanation. Each item: {"content":"...","thought_type":"...","importance":0.0,"metadata":{}}
-${typeGuidance}
-If nothing worth capturing, return [].`;
+${returnFormat}
+thought_type must be one of: decision|preference|lesson|rejection|drift|correction|insight|reflection|fact
+Importance guidance by type (0.0–1.0): decision=0.7-0.9, preference=0.8-1.0, lesson=0.6-0.8, rejection=0.5-0.7, insight=0.5-0.7, reflection=0.7-0.9, fact=0.9-1.0, drift=0.7-0.8, correction=0.6-0.8`;
 
   const ctrl = new AbortController();
   const timeoutId = setTimeout(() => ctrl.abort(), 30_000);
