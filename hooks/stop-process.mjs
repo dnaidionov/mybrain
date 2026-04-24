@@ -120,9 +120,10 @@ const JSON_MODE_MODELS = new Set([
   "google/gemini-3.1-flash-lite-preview",
 ]);
 
-async function extractInsights(conversationText, apiKey, model) {
+async function extractInsights(conversationText, apiKey, model, messageCount = 15) {
+  const maxInsights = Math.ceil(messageCount / 3) + 3;
   const systemPrompt = `You extract knowledge worth saving in a personal knowledge base.
-Analyze the conversation and identify 0-3 things worth capturing permanently.
+Analyze the conversation and capture everything genuinely worth keeping — up to ${maxInsights} items for a conversation of this length. Only capture what you actually find; do not pad to reach the limit.
 Only capture: architectural decisions, rejected alternatives with reasoning, explicit user preferences, non-obvious lessons or patterns, important discoveries, persistent personal facts (subscriptions, reference info), personal reflections.
 Do NOT capture: greetings, step-by-step explanations, trivial confirmations, things the user already knows, summaries of what was done.
 Return ONLY a raw JSON array with no markdown, no code fences, no explanation. Each item: {"content":"...","thought_type":"decision|preference|lesson|rejection|drift|correction|insight|reflection|fact","importance":0.0,"metadata":{}}
@@ -225,7 +226,7 @@ async function main() {
 
     // ── Extract insights ──
     const { insights, inputTokens: iT, outputTokens: oT } = await extractInsights(
-      conversationText, openrouter_api_key, extraction_model
+      conversationText, openrouter_api_key, extraction_model, newMessages.length
     );
     inputTokens = iT;
     outputTokens = oT;
