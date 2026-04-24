@@ -161,6 +161,10 @@ cd .mybrain/<name> && <compose-cmd> up -d
 
 Restart Claude Code. Test: "How many thoughts do I have?"
 
+### D8: Enable Auto-Capture
+
+Follow the **Auto-Capture Setup** steps at the bottom of this file.
+
 ---
 
 ## RDS Path
@@ -212,6 +216,10 @@ psql "<DATABASE_URL>" -f templates/schema.sql
 
 Restart Claude Code. Test: "How many thoughts do I have?" -- should call `brain_stats` and return a count scoped to the user's ltree scope.
 
+### R6: Enable Auto-Capture
+
+Follow the **Auto-Capture Setup** steps at the bottom of this file.
+
 ---
 
 ## Summary Template
@@ -241,6 +249,156 @@ Tools:
 
 Try: "Remember this: I just set up MyBrain"
 ```
+
+---
+
+## Auto-Capture Setup
+
+This section is shared by both Docker (D8) and RDS (R6) paths. Run after the brain is verified working.
+
+### AC1: Write the autocapture config file
+
+Determine the plugin root path (where `server.mjs` lives). For marketplace installs this is `${CLAUDE_PLUGIN_ROOT}`; for manual clones it's wherever the user cloned the repo.
+
+Create `~/.mybrain/<name>/.autocapture-config.json` with these contents:
+
+```json
+{
+  "enabled": true,
+  "database_url": "<same DATABASE_URL used for the brain>",
+  "openrouter_api_key": "<OPENROUTER_API_KEY>",
+  "brain_scope": "<scope or null>",
+  "extraction_model": "openai/gpt-oss-120b:free",
+  "batch_threshold_messages": 15,
+  "batch_threshold_minutes": 20,
+  "sweep_interval_minutes": 30,
+  "last_processed_index": 0,
+  "last_session_id": null,
+  "last_capture_at": null,
+  "truncation_warnings": []
+}
+```
+
+Secure the file immediately:
+
+```bash
+chmod 600 ~/.mybrain/<name>/.autocapture-config.json
+```
+
+### AC2: Register the Stop hook
+
+Read `~/.claude/settings.json` (create if missing as `{}`). Add the Stop hook under `"hooks"`, merging with any existing hook configuration:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "AUTOCAPTURE_CONFIG=~/.mybrain/<name>/.autocapture-config.json node <plugin-root>/hooks/stop-autocapture.mjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Use `~` expansion for the home directory. If a Stop hook array already exists, append to it rather than replacing. Do not remove existing hooks.
+
+Also set `AUTOCAPTURE_CONFIG` as an env var on the MCP server registration (in `.mcp.json` for Docker, or via `claude mcp add -e` for RDS) so `brain_stats` can read the enabled/disabled status.
+
+### AC3: Register the periodic sweep cron
+
+Use the `CronCreate` tool to register a recurring sweep job:
+
+```
+Schedule: every <sweep_interval_minutes> minutes
+Command: node <plugin-root>/hooks/sweep.mjs
+Env: AUTOCAPTURE_CONFIG=~/.mybrain/<name>/.autocapture-config.json
+```
+
+### AC4: Add the proactive instruction to global CLAUDE.md
+
+Check if `~/.claude/CLAUDE.md` already contains the mybrain auto-capture instruction block (search for `"mybrain:capture_thought proactively"` marker). If not present, append:
+
+```markdown
+<!-- mybrain:capture_thought proactively -->
+## MyBrain — Proactive Knowledge Capture
+
+When mybrain MCP tools are available, proactively call capture_thought when you identify:
+- Decisions (architectural, product, life): thought_type="decision", importance=0.7-0.9
+- Rejected alternatives with reasoning: thought_type="rejection", importance=0.5-0.7
+- Explicit preferences (tools, workflows, style): thought_type="preference", importance=0.8-1.0
+- Non-obvious lessons or patterns discovered: thought_type="lesson", importance=0.6-0.8
+- Important mid-task discoveries: thought_type="insight", importance=0.5-0.7
+- Personal facts worth long-term remembering (subscriptions, reference info, key dates): thought_type="fact", importance=0.9-1.0
+- Personal reflections (goals, values, life decisions): thought_type="reflection", importance=0.7-0.9
+
+Capture at the moment of realization. Do not duplicate what you've already captured this session.
+For project work: scope is auto-detected. For personal/non-project thoughts, no special action needed.
+<!-- end mybrain:capture_thought proactively -->
+```
+
+### AC5: Write the external prompt snippet
+
+Create `~/.mybrain/<name>/external-prompt.md`:
+
+```markdown
+# MyBrain — External Tools System Prompt
+
+Paste this into the system prompt for Claude.ai Projects, Codex, or any other AI tool
+that has access to mybrain's HTTP endpoint.
+
+---
+You have access to mybrain tools for personal knowledge management:
+- capture_thought: Save important information (decisions, lessons, preferences, insights, facts)
+- search_thoughts: Search your knowledge base with natural language
+- browse_thoughts: Browse recent entries
+- brain_stats: See storage statistics
+
+Proactively use capture_thought when you identify:
+- Decisions and their reasoning
+- Rejected alternatives (what was considered and why it was declined)
+- Preferences and personal choices
+- Non-obvious lessons and patterns
+- Persistent personal facts (subscriptions, reference information, key contacts)
+- Reflections and personal insights
+```
+
+### AC6: Run database migration (existing databases only)
+
+If this brain was set up before auto-capture was introduced, run these migration statements:
+
+```sql
+ALTER TYPE thought_type ADD VALUE IF NOT EXISTS 'fact';
+ALTER TYPE source_agent ADD VALUE IF NOT EXISTS 'claude';
+```
+
+Then create the new tables (run the CREATE TABLE IF NOT EXISTS statements from schema.sql).
+
+### AC7: Confirm
+
+Print:
+
+```
+Auto-capture configured successfully.
+
+  Config:   ~/.mybrain/<name>/.autocapture-config.json
+  Model:    llama-3.1-8b-instruct:free (free tier — $0 extraction cost)
+  Triggers: 15 new messages OR 20 min idle (configurable)
+  Sweep:    Every 30 min (catches idle/abandoned sessions)
+
+Layer 1 (proactive): Claude will capture insights mid-session autonomously.
+Layer 2 (background): Batch analysis runs after threshold is met.
+
+Run /autocapture-status to monitor. Run /autocapture-off to pause background capture.
+```
+
+---
 
 ## Important Notes
 

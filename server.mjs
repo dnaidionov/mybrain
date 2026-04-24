@@ -35,6 +35,8 @@ async function getEmbedding(text) {
   return data.data[0].embedding;
 }
 
+const AUTOCAPTURE_CONFIG = process.env.AUTOCAPTURE_CONFIG; // path to autocapture-config.json
+
 function registerTools(srv) {
   srv.tool(
     "capture_thought",
@@ -42,15 +44,17 @@ function registerTools(srv) {
     {
       content: z.string().describe("The thought content to save"),
       metadata: z.record(z.string(), z.unknown()).optional().describe("Optional metadata tags"),
+      thought_type: z.enum(["decision", "preference", "lesson", "rejection", "drift", "correction", "insight", "reflection", "fact"]).optional().describe("Type of thought (default: insight)"),
+      importance: z.number().min(0).max(1).optional().describe("Importance score 0-1 (default: 0.5)"),
     },
-    async ({ content, metadata = {} }) => {
+    async ({ content, metadata = {}, thought_type = "insight", importance = 0.5 }) => {
       const scopeArray = BRAIN_SCOPE ? [BRAIN_SCOPE] : ["default"];
       const embedding = await getEmbedding(content);
       const result = await pool.query(
         `INSERT INTO thoughts (content, embedding, metadata, scope, thought_type, source_agent, source_phase, importance)
-         VALUES ($1, $2, $3, $4::ltree[], 'insight', 'robert', 'build', 0.5)
+         VALUES ($1, $2, $3, $4::ltree[], $5, 'claude', 'build', $6)
          RETURNING id, created_at`,
-        [content, pgvector.toSql(embedding), JSON.stringify(metadata), `{${scopeArray.join(",")}}`]
+        [content, pgvector.toSql(embedding), JSON.stringify(metadata), `{${scopeArray.join(",")}}`, thought_type, importance]
       );
       const row = result.rows[0];
       return { content: [{ type: "text", text: `Thought captured (id: ${row.id}, created: ${row.created_at})` }] };
@@ -111,7 +115,7 @@ function registerTools(srv) {
 
   srv.tool(
     "brain_stats",
-    "Get statistics about stored thoughts.",
+    "Get statistics about stored thoughts, token usage, and auto-capture status.",
     {},
     async () => {
       const scopeFilter = BRAIN_SCOPE ? `WHERE scope @> ARRAY[$1]::ltree[]` : "";
@@ -119,14 +123,63 @@ function registerTools(srv) {
       const countRes = await pool.query(`SELECT count(*) as total FROM thoughts ${scopeFilter}`, scopeParams);
       const dateRes = await pool.query(`SELECT min(created_at) as earliest, max(created_at) as latest FROM thoughts ${scopeFilter}`, scopeParams);
       const metaRes = await pool.query(`SELECT key, count(*) as cnt FROM thoughts, jsonb_each(metadata) AS kv(key, value) ${scopeFilter} GROUP BY key ORDER BY cnt DESC LIMIT 10`, scopeParams);
+      const autoRes = await pool.query(
+        `SELECT count(*) as auto_count FROM thoughts WHERE source_phase = 'reconciliation' ${BRAIN_SCOPE ? "AND scope @> ARRAY[$1]::ltree[]" : ""}`,
+        scopeParams
+      );
+
+      // Token usage (if token_usage table exists)
+      let tokenStats = null;
+      try {
+        const tokenRes = await pool.query(
+          `SELECT
+            sum(CASE WHEN created_at >= now() - interval '1 day' THEN input_tokens + output_tokens ELSE 0 END) as today_tokens,
+            sum(CASE WHEN created_at >= now() - interval '7 days' THEN input_tokens + output_tokens ELSE 0 END) as week_tokens,
+            sum(CASE WHEN created_at >= now() - interval '30 days' THEN input_tokens + output_tokens ELSE 0 END) as month_tokens,
+            sum(CASE WHEN created_at >= now() - interval '1 day' THEN thoughts_captured ELSE 0 END) as today_captured,
+            sum(CASE WHEN created_at >= now() - interval '7 days' THEN thoughts_captured ELSE 0 END) as week_captured,
+            count(DISTINCT session_id) as total_sessions
+           FROM token_usage`
+        );
+        tokenStats = tokenRes.rows[0];
+      } catch (_) { /* token_usage table may not exist on older schemas */ }
+
+      // Autocapture warnings (if table exists)
+      let warningCount = 0;
+      try {
+        const warnRes = await pool.query(`SELECT count(*) as cnt FROM autocapture_warnings WHERE created_at >= now() - interval '7 days'`);
+        warningCount = parseInt(warnRes.rows[0].cnt, 10);
+      } catch (_) { /* autocapture_warnings table may not exist */ }
+
+      // Autocapture config (enabled/disabled status)
+      let autocaptureEnabled = null;
+      if (AUTOCAPTURE_CONFIG) {
+        try {
+          const { readFileSync } = await import("fs");
+          const cfg = JSON.parse(readFileSync(AUTOCAPTURE_CONFIG, "utf8"));
+          autocaptureEnabled = cfg.enabled;
+        } catch (_) { /* config file may not exist */ }
+      }
+
       const total = countRes.rows[0].total;
+      const autoCount = autoRes.rows[0].auto_count;
       const earliest = dateRes.rows[0].earliest;
       const latest = dateRes.rows[0].latest;
       const topKeys = metaRes.rows.map((r) => `${r.key}: ${r.cnt}`).join(", ");
-      let text = `Total thoughts: ${total}`;
-      if (earliest) text += `\nDate range: ${new Date(earliest).toLocaleDateString()} — ${new Date(latest).toLocaleDateString()}`;
-      if (topKeys) text += `\nTop metadata keys: ${topKeys}`;
-      return { content: [{ type: "text", text }] };
+
+      const lines = [];
+      lines.push(`Total thoughts: ${total} (${autoCount} auto-captured, ${total - autoCount} manual)`);
+      if (earliest) lines.push(`Date range: ${new Date(earliest).toLocaleDateString()} — ${new Date(latest).toLocaleDateString()}`);
+      if (topKeys) lines.push(`Top metadata keys: ${topKeys}`);
+      if (autocaptureEnabled !== null) lines.push(`Auto-capture: ${autocaptureEnabled ? "ENABLED" : "DISABLED"}`);
+      if (tokenStats) {
+        lines.push(`Token usage (today): ${(tokenStats.today_tokens || 0).toLocaleString()} tokens, ${tokenStats.today_captured || 0} thoughts captured`);
+        lines.push(`Token usage (7 days): ${(tokenStats.week_tokens || 0).toLocaleString()} tokens, ${tokenStats.week_captured || 0} thoughts captured`);
+        lines.push(`Sessions analyzed: ${tokenStats.total_sessions || 0}`);
+      }
+      if (warningCount > 0) lines.push(`⚠ Warnings (last 7 days): ${warningCount} truncation event(s) — use /autocapture-status for details`);
+
+      return { content: [{ type: "text", text: lines.join("\n") }] };
     }
   );
 }
