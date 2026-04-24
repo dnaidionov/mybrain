@@ -82,10 +82,10 @@ function buildConversationText(messages, maxTokenEstimate = 6000) {
       truncated = true;
       break;
     }
-    parts.unshift(entry);
+    parts.push(entry);
     totalChars += entry.length;
   }
-  return { text: parts.join("\n"), truncated };
+  return { text: parts.reverse().join("\n"), truncated };
 }
 
 function detectScope(configScope) {
@@ -122,26 +122,48 @@ const JSON_MODE_MODELS = new Set([
 
 async function extractInsights(conversationText, apiKey, model, messageCount = 15) {
   const maxInsights = Math.ceil(messageCount / 3) + 3;
-  const systemPrompt = `You extract knowledge worth saving in a personal knowledge base.
+  const jsonMode = JSON_MODE_MODELS.has(model);
+
+  const typeGuidance = `thought_type must be one of: decision|preference|lesson|rejection|drift|correction|insight|reflection|fact
+Importance guidance by type (0.0–1.0): decision=0.7-0.9, preference=0.8-1.0, lesson=0.6-0.8, rejection=0.5-0.7, insight=0.5-0.7, reflection=0.7-0.9, fact=0.9-1.0, drift=0.7-0.8, correction=0.6-0.8`;
+
+  const systemPrompt = jsonMode
+    ? `You extract knowledge worth saving in a personal knowledge base.
 Analyze the conversation and capture everything genuinely worth keeping — up to ${maxInsights} items for a conversation of this length. Only capture what you actually find; do not pad to reach the limit.
 Only capture: architectural decisions, rejected alternatives with reasoning, explicit user preferences, non-obvious lessons or patterns, important discoveries, persistent personal facts (subscriptions, reference info), personal reflections.
 Do NOT capture: greetings, step-by-step explanations, trivial confirmations, things the user already knows, summaries of what was done.
-Return ONLY a raw JSON array with no markdown, no code fences, no explanation. Each item: {"content":"...","thought_type":"decision|preference|lesson|rejection|drift|correction|insight|reflection|fact","importance":0.0,"metadata":{}}
+Return a JSON object with a single key "insights" containing an array. Each item: {"content":"...","thought_type":"...","importance":0.0,"metadata":{}}
+${typeGuidance}
+If nothing worth capturing, return {"insights": []}.`
+    : `You extract knowledge worth saving in a personal knowledge base.
+Analyze the conversation and capture everything genuinely worth keeping — up to ${maxInsights} items for a conversation of this length. Only capture what you actually find; do not pad to reach the limit.
+Only capture: architectural decisions, rejected alternatives with reasoning, explicit user preferences, non-obvious lessons or patterns, important discoveries, persistent personal facts (subscriptions, reference info), personal reflections.
+Do NOT capture: greetings, step-by-step explanations, trivial confirmations, things the user already knows, summaries of what was done.
+Return ONLY a raw JSON array with no markdown, no code fences, no explanation. Each item: {"content":"...","thought_type":"...","importance":0.0,"metadata":{}}
+${typeGuidance}
 If nothing worth capturing, return [].`;
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `Conversation to analyze:\n\n${conversationText}` },
-      ],
-      ...(JSON_MODE_MODELS.has(model) && { response_format: { type: "json_object" } }),
-      max_tokens: 1024,
-    }),
-  });
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 30_000);
+  let res;
+  try {
+    res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Conversation to analyze:\n\n${conversationText}` },
+        ],
+        ...(jsonMode && { response_format: { type: "json_object" } }),
+        max_tokens: 1024,
+      }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     const err = await res.text();
@@ -264,6 +286,12 @@ async function main() {
         thoughtsCaptured++;
       } catch (err) {
         process.stderr.write(`[autocapture] Failed to capture insight: ${err.message}\n`);
+        try {
+          await pool.query(
+            `INSERT INTO autocapture_warnings (session_id, warning_type, detail) VALUES ($1, 'capture_failure', $2)`,
+            [SESSION_ID, `Failed to capture insight: ${err.message}`]
+          );
+        } catch (_) { /* table may not exist yet */ }
       }
     }
 

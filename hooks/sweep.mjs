@@ -4,7 +4,7 @@
 // Finds session JSONL files with unprocessed content that haven't grown in N minutes,
 // and triggers stop-process.mjs for each one.
 import { readdirSync, statSync, readFileSync, existsSync } from "fs";
-import { spawn } from "child_process";
+import { spawnSync } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
@@ -66,21 +66,26 @@ function findIdleSessions(baseDir) {
 
 const idleSessions = findIdleSessions(claudeDir);
 
-// Check which sessions have unprocessed content
+// Check which sessions have unprocessed content.
+// Note: the config cursor tracks only the last session — older sessions restart from 0,
+// but dedup in stop-process.mjs prevents duplicate insertions.
 const { last_session_id, last_processed_index = 0 } = cfg;
 
+const sessionsToProcess = [];
 for (const { sessionId, filePath } of idleSessions) {
   try {
     const lines = readFileSync(filePath, "utf8").split("\n").filter(Boolean);
     const cursor = sessionId === last_session_id ? last_processed_index : 0;
-    if (lines.length <= cursor) continue; // No new content
-
-    // Trigger background processing
-    const child = spawn(
-      process.execPath,
-      [join(__dirname, "stop-process.mjs"), sessionId, filePath, CONFIG_PATH],
-      { detached: true, stdio: "ignore", env: process.env }
-    );
-    child.unref();
+    if (lines.length > cursor) sessionsToProcess.push({ sessionId, filePath });
   } catch (_) { /* skip unreadable sessions */ }
+}
+
+// Process serially (cap at 5) to avoid concurrent config writes and unbounded spawning.
+const MAX_SESSIONS = 5;
+for (const { sessionId, filePath } of sessionsToProcess.slice(0, MAX_SESSIONS)) {
+  spawnSync(
+    process.execPath,
+    [join(__dirname, "stop-process.mjs"), sessionId, filePath, CONFIG_PATH],
+    { stdio: "ignore", env: process.env }
+  );
 }
