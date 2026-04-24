@@ -18,12 +18,12 @@ CREATE EXTENSION IF NOT EXISTS ltree;
 
 CREATE TYPE thought_type AS ENUM (
   'decision', 'preference', 'lesson', 'rejection',
-  'drift', 'correction', 'insight', 'reflection'
+  'drift', 'correction', 'insight', 'reflection', 'fact'
 );
 
 CREATE TYPE source_agent AS ENUM (
   'eva', 'cal', 'robert', 'sable', 'colby',
-  'roz', 'poirot', 'agatha', 'distillator', 'ellis'
+  'roz', 'poirot', 'agatha', 'distillator', 'ellis', 'claude'
 );
 
 CREATE TYPE source_phase AS ENUM (
@@ -58,7 +58,8 @@ INSERT INTO thought_type_config VALUES
   ('drift',       90,   0.8,  'Spec/UX drift findings'),
   ('correction',  90,   0.7,  'Fixes applied after drift detection'),
   ('insight',     180,  0.6,  'Mid-task discoveries'),
-  ('reflection',  NULL, 0.85, 'Consolidation-generated synthesis');
+  ('reflection',  NULL, 0.85, 'Consolidation-generated synthesis'),
+  ('fact',        NULL, 0.9,  'Persistent personal facts, subscriptions, reference information');
 
 CREATE TABLE brain_config (
   id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -211,3 +212,42 @@ BEGIN
   LIMIT max_results;
 END;
 $$ LANGUAGE plpgsql;
+
+-- =============================================================================
+-- Auto-Capture Tables
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS token_usage (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id TEXT,
+  scope ltree[],
+  model TEXT,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  embeddings_count INTEGER DEFAULT 0,
+  thoughts_captured INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS token_usage_session_idx ON token_usage (session_id);
+CREATE INDEX IF NOT EXISTS token_usage_created_idx ON token_usage (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS autocapture_warnings (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id TEXT,
+  warning_type TEXT NOT NULL,
+  detail TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS autocapture_warnings_created_idx ON autocapture_warnings (created_at DESC);
+
+-- =============================================================================
+-- Migration Notes (for existing databases)
+-- Run these statements against an existing mybrain database to add new features:
+--
+--   ALTER TYPE thought_type ADD VALUE IF NOT EXISTS 'fact';
+--   ALTER TYPE source_agent ADD VALUE IF NOT EXISTS 'claude';
+--
+-- Then run the CREATE TABLE IF NOT EXISTS statements above.
+-- =============================================================================
