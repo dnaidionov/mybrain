@@ -109,6 +109,17 @@ async function getEmbedding(text, apiKey) {
   return data.data[0].embedding;
 }
 
+// Models confirmed to support response_format on OpenRouter (including free variants).
+// openai/gpt-oss-120b:free does not list it in supported_parameters but is included
+// here intentionally — it handles json_object gracefully in practice.
+const JSON_MODE_MODELS = new Set([
+  "openai/gpt-oss-120b:free",
+  "anthropic/claude-haiku-4.5",
+  "nvidia/nemotron-3-super-120b-a12b",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "google/gemini-3.1-flash-lite-preview",
+]);
+
 async function extractInsights(conversationText, apiKey, model) {
   const systemPrompt = `You extract knowledge worth saving in a personal knowledge base.
 Analyze the conversation and identify 0-3 things worth capturing permanently.
@@ -126,7 +137,7 @@ If nothing worth capturing, return [].`;
         { role: "system", content: systemPrompt },
         { role: "user", content: `Conversation to analyze:\n\n${conversationText}` },
       ],
-      response_format: { type: "json_object" },
+      ...(JSON_MODE_MODELS.has(model) && { response_format: { type: "json_object" } }),
       max_tokens: 1024,
     }),
   });
