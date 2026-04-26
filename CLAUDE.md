@@ -80,9 +80,9 @@ Recency decay: `0.995 ^ hours_since_last_access`.
 skills/
   mybrain-setup/           # /mybrain-setup wizard skill
   mybrain-overview/        # /mybrain-overview reference skill
-  autocapture-status/      # /mybrain-autocapture-status — show auto-capture status + token usage
-  autocapture-on/          # /mybrain-autocapture-on — enable background capture
-  autocapture-off/         # /mybrain-autocapture-off — disable background capture
+  mybrain-autocapture-status/ # /mybrain-autocapture-status — show auto-capture status + token usage
+  mybrain-autocapture-on/          # /mybrain-autocapture-on — enable background capture
+  mybrain-autocapture-off/         # /mybrain-autocapture-off — disable background capture
 hooks/
   stop-autocapture.mjs     # Claude Code Stop hook entry point (exits < 1ms)
   stop-process.mjs         # Detached background worker for batch analysis

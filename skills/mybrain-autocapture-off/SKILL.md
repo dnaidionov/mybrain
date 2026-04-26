@@ -22,7 +22,7 @@ description: Disable mybrain background auto-capture (Layer 2). Sets enabled=fal
    to call capture_thought when it identifies something important during sessions.
 
    To disable Layer 1 as well, remove the mybrain instruction from ~/.claude/CLAUDE.md.
-   To re-enable background capture: /autocapture-on
+   To re-enable background capture: /mybrain-autocapture-on
    ```
 
 ## Notes
