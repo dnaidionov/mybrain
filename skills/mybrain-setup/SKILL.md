@@ -395,7 +395,7 @@ Auto-capture configured successfully.
 Layer 1 (proactive): Claude will capture insights mid-session autonomously.
 Layer 2 (background): Batch analysis runs after threshold is met.
 
-Run /autocapture-status to monitor. Run /autocapture-off to pause background capture.
+Run /mybrain-autocapture-status to monitor. Run /mybrain-autocapture-off to pause background capture.
 ```
 
 ---
