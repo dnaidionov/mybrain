@@ -44,11 +44,19 @@ Five skills ship with the plugin:
 
 MyBrain can automatically capture important information from your Claude Code sessions without manual `capture_thought` calls.
 
-**Two layers, set up by `/mybrain-setup`:**
+**Two layers, optionally configured by `/mybrain-setup` (enabled by default when asked):**
 
 **Layer 1 — Proactive**: An instruction added to `~/.claude/CLAUDE.md` tells Claude to call `capture_thought` at the moment of insight — when it identifies a decision, rejection, preference, lesson, discovery, or personal fact. No extra LLM call, no extra cost.
 
-**Layer 2 — Reactive (background)**: A Claude Code Stop hook spawns a detached background worker after each response. The worker reads the session transcript, checks whether a batch threshold has been met (default: 15 new messages or 20 min idle), and if so, sends the new content to `openai/gpt-oss-120b:free` on OpenRouter to extract insights. **Total additional cost: $0.**
+**Layer 2 — Reactive (background)**: A Claude Code Stop hook spawns a detached background worker after each response. The worker reads the session transcript, checks whether a batch threshold has been met (default: 15 new messages or 20 min idle), and if so, sends the new content to an extraction model on OpenRouter to extract insights. **Total additional cost: $0.**
+
+The default extraction model is `openai/gpt-oss-120b:free` — chosen for its combination of being free, capable at structured extraction, and having good context length. It can be swapped for any OpenRouter model by changing `extraction_model` in the config — free or paid. Some alternatives:
+
+| Model | Cost |
+|---|---|
+| `google/gemini-3.1-flash-lite-preview` | Free |
+| `nvidia/nemotron-3-super-120b-a12b:free` | Free |
+| `anthropic/claude-haiku-4.5` | Paid |
 
 An idle sweep (registered via CronCreate) catches abandoned threads that the Stop hook never fires for again.
 
@@ -60,11 +68,14 @@ Config lives at `~/.mybrain/<name>/.autocapture-config.json` (chmod 600). Key se
   "extraction_model": "openai/gpt-oss-120b:free",
   "batch_threshold_messages": 15,
   "batch_threshold_minutes": 20,
-  "sweep_interval_minutes": 30
+  "sweep_interval_minutes": 30,
+  "prune_after_days": 30
 }
 ```
 
-Use `/mybrain-autocapture-status` to monitor what's been captured and `/mybrain-autocapture-off` to pause Layer 2 (Layer 1 proactive capture remains active independently).
+Per-session cursors are tracked separately in `~/.mybrain/<name>/.sessions.json` (auto-created). Deleting this file resets all session cursors — thoughts already captured are unaffected, but the next sweep may re-analyze recent sessions (dedup prevents double-captures).
+
+Use `/mybrain-autocapture-status` to monitor what's been captured. `/mybrain-autocapture-off` disables both layers — Layer 2 (background) and Layer 1 (removes the proactive instruction from `~/.claude/CLAUDE.md`). `/mybrain-autocapture-on` restores both.
 
 ---
 

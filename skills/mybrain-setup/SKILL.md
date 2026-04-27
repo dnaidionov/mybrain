@@ -163,7 +163,10 @@ Restart Claude Code. Test: "How many thoughts do I have?"
 
 ### D8: Enable Auto-Capture
 
-Follow the **Auto-Capture Setup** steps at the bottom of this file.
+Ask the user: **"Would you like to enable auto-capture? It automatically extracts decisions, insights, and lessons from your Claude Code sessions in the background at $0 cost. (yes/no, default: yes)"**
+
+- If yes (or Enter): follow the **Auto-Capture Setup** steps at the bottom of this file.
+- If no: skip to the Summary Template. Auto-capture can be enabled later with `/mybrain-autocapture-on`.
 
 ---
 
@@ -218,7 +221,10 @@ Restart Claude Code. Test: "How many thoughts do I have?" -- should call `brain_
 
 ### R6: Enable Auto-Capture
 
-Follow the **Auto-Capture Setup** steps at the bottom of this file.
+Ask the user: **"Would you like to enable auto-capture? It automatically extracts decisions, insights, and lessons from your Claude Code sessions in the background at $0 cost. (yes/no, default: yes)"**
+
+- If yes (or Enter): follow the **Auto-Capture Setup** steps at the bottom of this file.
+- If no: skip to the Summary Template. Auto-capture can be enabled later with `/mybrain-autocapture-on`.
 
 ---
 
@@ -246,6 +252,8 @@ Tools:
   search_thoughts   -- Semantic search (uses OpenRouter)
   browse_thoughts   -- List recent thoughts (free)
   brain_stats       -- Statistics (free)
+
+Auto-capture: {{ENABLED | DISABLED (run /mybrain-autocapture-on to enable)}}
 
 Try: "Remember this: I just set up MyBrain"
 ```
