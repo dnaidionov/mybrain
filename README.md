@@ -34,9 +34,9 @@ Five skills ship with the plugin:
 |---|---|
 | `/mybrain-setup` | Interactive setup wizard (Docker or RDS) + auto-capture configuration |
 | `/mybrain-overview` | Architecture, tools, and usage reference |
-| `/autocapture-status` | Show auto-capture state, thresholds, token usage, and warnings |
-| `/autocapture-on` | Enable background auto-capture |
-| `/autocapture-off` | Disable background auto-capture |
+| `/mybrain-autocapture-status` | Show auto-capture state, thresholds, token usage, and warnings |
+| `/mybrain-autocapture-on` | Enable background auto-capture |
+| `/mybrain-autocapture-off` | Disable background auto-capture |
 
 ---
 
@@ -64,7 +64,7 @@ Config lives at `~/.mybrain/<name>/.autocapture-config.json` (chmod 600). Key se
 }
 ```
 
-Use `/autocapture-status` to monitor what's been captured and `/autocapture-off` to pause Layer 2 (Layer 1 proactive capture remains active independently).
+Use `/mybrain-autocapture-status` to monitor what's been captured and `/mybrain-autocapture-off` to pause Layer 2 (Layer 1 proactive capture remains active independently).
 
 ---
 
@@ -256,9 +256,9 @@ hooks/
 skills/
   mybrain-setup/           /mybrain-setup — wizard + auto-capture configuration
   mybrain-overview/        /mybrain-overview — architecture + tool reference
-  autocapture-status/      /autocapture-status — status, thresholds, token usage
-  autocapture-on/          /autocapture-on — enable background capture
-  autocapture-off/         /autocapture-off — disable background capture
+  mybrain-autocapture-status/  /mybrain-autocapture-status — status, thresholds, token usage
+  mybrain-autocapture-on/      /mybrain-autocapture-on — enable background capture
+  mybrain-autocapture-off/     /mybrain-autocapture-off — disable background capture
 templates/
   server.mjs               MCP server (dual mode: stdio + HTTP)
   package.json             Node dependencies
@@ -291,7 +291,7 @@ Each brain instance uses two ports (default: MCP 8787, Postgres 5433). Run `/myb
 **Auto-capture not working.**
 1. Check `~/.claude/settings.json` has a Stop hook pointing to `stop-autocapture.mjs`
 2. Check `~/.mybrain/<name>/.autocapture-config.json` exists and `"enabled": true`
-3. Run `/autocapture-status` to see current state
+3. Run `/mybrain-autocapture-status` to see current state
 4. Check that `OPENROUTER_API_KEY` is set in the environment (not just the plugin config)
 
 **`brain_stats` doesn't show token usage.**

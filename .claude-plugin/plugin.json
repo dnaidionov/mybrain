@@ -10,8 +10,8 @@
   "skills": [
     "./skills/mybrain-setup",
     "./skills/mybrain-overview",
-    "./skills/autocapture-status",
-    "./skills/autocapture-on",
-    "./skills/autocapture-off"
+    "./skills/mybrain-autocapture-status",
+    "./skills/mybrain-autocapture-on",
+    "./skills/mybrain-autocapture-off"
   ]
 }

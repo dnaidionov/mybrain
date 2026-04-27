@@ -1,5 +1,5 @@
 ---
-name: autocapture-status
+name: mybrain-autocapture-status
 description: Show the auto-capture status for mybrain — enabled/disabled state, current thresholds, token usage stats, and any warnings. Call brain_stats and format the auto-capture section as an aligned table.
 ---
 
@@ -40,7 +40,7 @@ Warnings      │ 1 truncation event on 2026-04-22 — some content from a large
 
 5. If auto-capture is DISABLED, add a note:
 ```
-              │ Run /autocapture-on to re-enable background capture.
+              │ Run /mybrain-autocapture-on to re-enable background capture.
               │ Layer 1 (proactive in-session capture) is always active when mybrain
               │ MCP tools are connected.
 ```

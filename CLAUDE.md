@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-MyBrain is a Claude Code plugin that exposes a personal knowledge base as an MCP server. It stores and retrieves thoughts using PostgreSQL + pgvector (semantic search) and ltree (scope isolation). It ships as a plugin with skills (`/mybrain-setup`, `/mybrain-overview`, `/autocapture-status`, `/autocapture-on`, `/autocapture-off`) and is distributed via the Claude Code plugin marketplace.
+MyBrain is a Claude Code plugin that exposes a personal knowledge base as an MCP server. It stores and retrieves thoughts using PostgreSQL + pgvector (semantic search) and ltree (scope isolation). It ships as a plugin with skills (`/mybrain-setup`, `/mybrain-overview`, `/mybrain-autocapture-status`, `/mybrain-autocapture-on`, `/mybrain-autocapture-off`) and is distributed via the Claude Code plugin marketplace.
 
 ## Running the Server
 
@@ -80,9 +80,9 @@ Recency decay: `0.995 ^ hours_since_last_access`.
 skills/
   mybrain-setup/           # /mybrain-setup wizard skill
   mybrain-overview/        # /mybrain-overview reference skill
-  autocapture-status/      # /autocapture-status — show auto-capture status + token usage
-  autocapture-on/          # /autocapture-on — enable background capture
-  autocapture-off/         # /autocapture-off — disable background capture
+  mybrain-autocapture-status/ # /mybrain-autocapture-status — show auto-capture status + token usage
+  mybrain-autocapture-on/          # /mybrain-autocapture-on — enable background capture
+  mybrain-autocapture-off/         # /mybrain-autocapture-off — disable background capture
 hooks/
   stop-autocapture.mjs     # Claude Code Stop hook entry point (exits < 1ms)
   stop-process.mjs         # Detached background worker for batch analysis

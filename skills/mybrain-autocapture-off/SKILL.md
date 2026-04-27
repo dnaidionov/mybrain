@@ -1,5 +1,5 @@
 ---
-name: autocapture-off
+name: mybrain-autocapture-off
 description: Disable mybrain background auto-capture (Layer 2). Sets enabled=false in the autocapture config file. The Stop hook still fires but exits immediately. Does NOT affect Layer 1 (proactive in-session capture via CLAUDE.md instruction).
 ---
 
@@ -22,7 +22,7 @@ description: Disable mybrain background auto-capture (Layer 2). Sets enabled=fal
    to call capture_thought when it identifies something important during sessions.
 
    To disable Layer 1 as well, remove the mybrain instruction from ~/.claude/CLAUDE.md.
-   To re-enable background capture: /autocapture-on
+   To re-enable background capture: /mybrain-autocapture-on
    ```
 
 ## Notes

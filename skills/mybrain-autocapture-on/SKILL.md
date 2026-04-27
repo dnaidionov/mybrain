@@ -1,5 +1,5 @@
 ---
-name: autocapture-on
+name: mybrain-autocapture-on
 description: Enable mybrain auto-capture. Sets enabled=true in the autocapture config file and verifies the Stop hook is registered in ~/.claude/settings.json. Does not affect Layer 1 (proactive in-session capture via CLAUDE.md instruction), which is always active.
 ---
 
@@ -31,7 +31,7 @@ description: Enable mybrain auto-capture. Sets enabled=true in the autocapture c
 
    Background sweep will process sessions every <sweep_interval_minutes> minutes.
    Layer 1 (proactive in-session capture) is always active.
-   Run /autocapture-status to monitor.
+   Run /mybrain-autocapture-status to monitor.
    ```
 
 ## Notes
