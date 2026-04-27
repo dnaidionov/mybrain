@@ -48,7 +48,15 @@ MyBrain can automatically capture important information from your Claude Code se
 
 **Layer 1 — Proactive**: An instruction added to `~/.claude/CLAUDE.md` tells Claude to call `capture_thought` at the moment of insight — when it identifies a decision, rejection, preference, lesson, discovery, or personal fact. No extra LLM call, no extra cost.
 
-**Layer 2 — Reactive (background)**: A Claude Code Stop hook spawns a detached background worker after each response. The worker reads the session transcript, checks whether a batch threshold has been met (default: 15 new messages or 20 min idle), and if so, sends the new content to `openai/gpt-oss-120b:free` on OpenRouter to extract insights. **Total additional cost: $0.**
+**Layer 2 — Reactive (background)**: A Claude Code Stop hook spawns a detached background worker after each response. The worker reads the session transcript, checks whether a batch threshold has been met (default: 15 new messages or 20 min idle), and if so, sends the new content to an extraction model on OpenRouter to extract insights. **Total additional cost: $0.**
+
+The default extraction model is `openai/gpt-oss-120b:free` — chosen for its combination of being free, capable at structured extraction, and having good context length. It can be swapped for any OpenRouter model by changing `extraction_model` in the config — free or paid. Some alternatives:
+
+| Model | Cost |
+|---|---|
+| `google/gemini-3.1-flash-lite-preview` | Free |
+| `nvidia/nemotron-3-super-120b-a12b:free` | Free |
+| `anthropic/claude-haiku-4.5` | Paid |
 
 An idle sweep (registered via CronCreate) catches abandoned threads that the Stop hook never fires for again.
 
