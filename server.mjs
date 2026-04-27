@@ -11,6 +11,7 @@ const DATABASE_URL = process.env.DATABASE_URL || "postgresql://localhost:5432/my
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const BRAIN_SCOPE = process.env.BRAIN_SCOPE; // e.g. "personal" — filters all queries to this scope
 const EMBEDDING_MODEL = "openai/text-embedding-3-small";
+const AUTOCAPTURE_CONFIG = process.env.AUTOCAPTURE_CONFIG; // path to autocapture-config.json
 
 const pool = new pg.Pool({ connectionString: DATABASE_URL });
 
@@ -34,8 +35,6 @@ async function getEmbedding(text) {
   const data = await res.json();
   return data.data[0].embedding;
 }
-
-const AUTOCAPTURE_CONFIG = process.env.AUTOCAPTURE_CONFIG; // path to autocapture-config.json
 
 function registerTools(srv) {
   srv.tool(
@@ -184,7 +183,7 @@ function registerTools(srv) {
   );
 }
 
-const mode = process.argv[2] || "stdio";
+const mode = process.env.MCP_TRANSPORT || process.argv[2] || "stdio";
 
 if (mode === "http") {
   const PORT = process.env.PORT || 8787;
@@ -219,6 +218,12 @@ if (mode === "http") {
       if (req.method === "OPTIONS") {
         res.writeHead(204);
         res.end();
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ status: "ok" }));
         return;
       }
 

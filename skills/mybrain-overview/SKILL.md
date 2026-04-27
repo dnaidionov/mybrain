@@ -45,6 +45,8 @@ When `BRAIN_SCOPE` is set (e.g. `personal`, `myproject.app`), all queries filter
 
 ## Tools
 
+<!-- Canonical tools reference: README.md → "What You Get" -->
+
 | Tool | Description | Uses OpenRouter | Cost |
 |------|-------------|-----------------|------|
 | `capture_thought` | Save a thought with metadata | Yes | ~$0.0001 |

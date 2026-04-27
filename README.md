@@ -173,6 +173,7 @@ Claude Code --HTTP--> mybrain_mcp (:8787) --> mybrain_postgres
 
 - PostgreSQL + pgvector in containers
 - MCP server runs in a container, exposed on `http://localhost:8787/mcp`
+- Transport mode set via `MCP_TRANSPORT=http` env var (falls back to `process.argv[2]` or `stdio`)
 - `BRAIN_SCOPE` is optional (single-user, single database)
 - Multiple named brains run side-by-side on different ports
 
@@ -271,12 +272,15 @@ skills/
   mybrain-autocapture-on/      /mybrain-autocapture-on — enable background capture
   mybrain-autocapture-off/     /mybrain-autocapture-off — disable background capture
 templates/
-  server.mjs               MCP server (dual mode: stdio + HTTP)
+  server.mjs               MCP server (dual mode: stdio + HTTP) — must stay identical to top-level server.mjs
   package.json             Node dependencies
   schema.sql               Full schema (ltree, match_thoughts_scored, HNSW, token_usage)
   Dockerfile               Container image
   compose.yml              PostgreSQL + MCP server services
   .env.example             Environment template
+  proactive-instruction.md Canonical Layer 1 CLAUDE.md instruction block (single source of truth)
+scripts/
+  check-sync.sh            Fails if server.mjs and templates/server.mjs have diverged
 server.mjs                 Top-level server (used by stdio registration)
 ```
 
