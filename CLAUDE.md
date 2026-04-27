@@ -50,7 +50,7 @@ psql "$DATABASE_URL" -f templates/schema.sql
 
 **`server.mjs`** is the entire MCP server — no build step, single ES module file. It detects transport mode from `process.argv[2]` (`stdio` default, `http` explicit). Both modes call the same `registerTools(srv)` function which defines the four MCP tools.
 
-**Tool → DB flow:**
+**Tool → DB flow** (canonical tool descriptions in `README.md` → "What You Get"):
 1. `capture_thought` / `search_thoughts` — call `getEmbedding()` (OpenRouter HTTP) → write/query PostgreSQL
 2. `browse_thoughts` / `brain_stats` — pure SQL, no embedding call
 
@@ -61,7 +61,7 @@ psql "$DATABASE_URL" -f templates/schema.sql
 
 **`brain_stats` extended output:** includes token usage (from `token_usage` table), auto-captured vs. manual counts, auto-capture enabled/disabled status (requires `AUTOCAPTURE_CONFIG` env var), and truncation warnings.
 
-**`match_thoughts_scored` (PostgreSQL function)** implements the three-axis scoring formula:
+**`match_thoughts_scored` (PostgreSQL function)** implements the three-axis scoring formula (canonical definition in `templates/schema.sql`):
 ```
 combined_score = (3.0 × cosine_similarity) + (2.0 × importance) + (0.5 × recency_decay)
 ```
@@ -115,9 +115,4 @@ A periodic sweep (`hooks/sweep.mjs`, invoked via CronCreate) handles idle/abando
 
 **New DB tables**: `token_usage` (tracks extraction token counts per session) and `autocapture_warnings` (truncation events). New enum values: `thought_type='fact'`, `source_agent='claude'`.
 
-**Migration for existing databases**:
-```sql
-ALTER TYPE thought_type ADD VALUE IF NOT EXISTS 'fact';
-ALTER TYPE source_agent ADD VALUE IF NOT EXISTS 'claude';
--- Then run CREATE TABLE IF NOT EXISTS for token_usage and autocapture_warnings from schema.sql
-```
+**Migration for existing databases**: see `README.md` → "Migrating an existing database" for the canonical SQL commands.
