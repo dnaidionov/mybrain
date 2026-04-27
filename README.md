@@ -256,9 +256,9 @@ hooks/
 skills/
   mybrain-setup/           /mybrain-setup — wizard + auto-capture configuration
   mybrain-overview/        /mybrain-overview — architecture + tool reference
-  autocapture-status/      /mybrain-autocapture-status — status, thresholds, token usage
-  autocapture-on/          /mybrain-autocapture-on — enable background capture
-  autocapture-off/         /mybrain-autocapture-off — disable background capture
+  mybrain-autocapture-status/  /mybrain-autocapture-status — status, thresholds, token usage
+  mybrain-autocapture-on/      /mybrain-autocapture-on — enable background capture
+  mybrain-autocapture-off/     /mybrain-autocapture-off — disable background capture
 templates/
   server.mjs               MCP server (dual mode: stdio + HTTP)
   package.json             Node dependencies
