@@ -44,7 +44,7 @@ Five skills ship with the plugin:
 
 MyBrain can automatically capture important information from your Claude Code sessions without manual `capture_thought` calls.
 
-**Two layers, set up by `/mybrain-setup`:**
+**Two layers, optionally configured by `/mybrain-setup` (enabled by default when asked):**
 
 **Layer 1 — Proactive**: An instruction added to `~/.claude/CLAUDE.md` tells Claude to call `capture_thought` at the moment of insight — when it identifies a decision, rejection, preference, lesson, discovery, or personal fact. No extra LLM call, no extra cost.
 
@@ -60,9 +60,12 @@ Config lives at `~/.mybrain/<name>/.autocapture-config.json` (chmod 600). Key se
   "extraction_model": "openai/gpt-oss-120b:free",
   "batch_threshold_messages": 15,
   "batch_threshold_minutes": 20,
-  "sweep_interval_minutes": 30
+  "sweep_interval_minutes": 30,
+  "prune_after_days": 30
 }
 ```
+
+Per-session cursors are tracked separately in `~/.mybrain/<name>/.sessions.json` (auto-created). Deleting this file resets all session cursors — thoughts already captured are unaffected, but the next sweep may re-analyze recent sessions (dedup prevents double-captures).
 
 Use `/mybrain-autocapture-status` to monitor what's been captured and `/mybrain-autocapture-off` to pause Layer 2 (Layer 1 proactive capture remains active independently).
 
