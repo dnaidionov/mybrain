@@ -1,52 +1,75 @@
 #!/usr/bin/env node
 // Auto-capture background worker. Runs detached after each Claude Code response.
 // Analyzes new conversation content in batches and captures worth-keeping insights.
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync, appendFileSync } from "fs";
 import { execSync } from "child_process";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import pg from "pg";
 import pgvector from "pgvector/pg";
 
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 const [, , SESSION_ID, TRANSCRIPT_PATH, CONFIG_PATH] = process.argv;
 
-// ─── Config ─────────────────────────────────────────────────────────────────
+// ─── Session tracking ────────────────────────────────────────────────────────
 
-function loadConfig(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
+export function getSessPath(configPath) {
+  return join(dirname(configPath), ".sessions.json");
 }
 
-function saveConfig(path, cfg) {
-  writeFileSync(path, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+export function loadSessions(configPath, migrationHint = {}) {
+  try {
+    return JSON.parse(readFileSync(getSessPath(configPath), "utf8"));
+  } catch (_) {
+    // One-time migration: seed from flat config cursor fields if present
+    const { last_session_id, last_processed_index, last_capture_at } = migrationHint;
+    if (last_session_id) {
+      return {
+        sessions: {
+          [last_session_id]: {
+            last_processed_index: last_processed_index || 0,
+            last_capture_at: last_capture_at || null,
+            last_mtime: 0,
+            transcript_path: null,
+            status: "active",
+          },
+        },
+      };
+    }
+    return { sessions: {} };
+  }
 }
 
-let cfg;
-try {
-  cfg = loadConfig(CONFIG_PATH);
-} catch (e) {
-  process.exit(0); // No config — nothing to do
+export function saveSessions(configPath, sessData, pruneAfterDays = 30) {
+  const cutoffMs = Date.now() - pruneAfterDays * 86_400_000;
+  const pruned = {};
+  for (const [id, s] of Object.entries(sessData.sessions || {})) {
+    if (s.status === "done" && s.last_capture_at && new Date(s.last_capture_at).getTime() < cutoffMs) continue;
+    pruned[id] = s;
+  }
+  writeFileSync(
+    getSessPath(configPath),
+    JSON.stringify({ ...sessData, sessions: pruned }, null, 2),
+    { mode: 0o600 }
+  );
 }
 
-if (!cfg.enabled) process.exit(0);
-
-const {
-  database_url,
-  openrouter_api_key,
-  brain_scope,
-  extraction_model = "openai/gpt-oss-120b:free",
-  batch_threshold_messages = 15,
-  batch_threshold_minutes = 20,
-  last_processed_index = 0,
-  last_session_id,
-  last_capture_at,
-} = cfg;
+export function logError(configPath, sessionId, err) {
+  try {
+    const logPath = join(dirname(configPath), "errors.log");
+    const line = `[${new Date().toISOString()}] [session:${sessionId || "unknown"}] ${err.message}\n${err.stack || ""}\n\n`;
+    appendFileSync(logPath, line);
+  } catch (_) {}
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function minutesSince(isoString) {
+export function minutesSince(isoString) {
   if (!isoString) return Infinity;
   return (Date.now() - new Date(isoString).getTime()) / 60000;
 }
 
-function parseTranscript(path) {
+export function parseTranscript(path) {
   if (!existsSync(path)) return [];
   const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
   const messages = [];
@@ -56,7 +79,7 @@ function parseTranscript(path) {
   return messages;
 }
 
-function extractText(message) {
+export function extractText(message) {
   const content = message?.message?.content || message?.content || [];
   if (!Array.isArray(content)) return "";
   return content
@@ -65,7 +88,7 @@ function extractText(message) {
     .join("\n");
 }
 
-function buildConversationText(messages, maxTokenEstimate = 6000) {
+export function buildConversationText(messages, maxTokenEstimate = 6000) {
   // Rough estimate: 1 token ≈ 4 chars
   const maxChars = maxTokenEstimate * 4;
   const parts = [];
@@ -88,7 +111,7 @@ function buildConversationText(messages, maxTokenEstimate = 6000) {
   return { text: parts.reverse().join("\n"), truncated };
 }
 
-function detectScope(configScope) {
+export function detectScope(configScope) {
   // Prefer git repo slug, fallback to configured scope or 'personal'
   try {
     const remote = execSync("git remote get-url origin 2>/dev/null", { encoding: "utf8" }).trim();
@@ -98,7 +121,17 @@ function detectScope(configScope) {
   return configScope || "personal";
 }
 
-async function getEmbedding(text, apiKey) {
+export function checkThresholds({ newMessageCount, lastCaptureAt, batchThresholdMessages, batchThresholdMinutes }) {
+  const messageThresholdMet = newMessageCount >= batchThresholdMessages;
+  const timeThresholdMet = minutesSince(lastCaptureAt) >= batchThresholdMinutes;
+  return { messageThresholdMet, timeThresholdMet, shouldProcess: messageThresholdMet || timeThresholdMet };
+}
+
+export function checkContentGate(messages) {
+  return messages.some((msg) => extractText(msg).trim().length > 50);
+}
+
+export async function getEmbedding(text, apiKey) {
   const res = await fetch("https://openrouter.ai/api/v1/embeddings", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -112,7 +145,7 @@ async function getEmbedding(text, apiKey) {
 // Models confirmed to support response_format on OpenRouter (including free variants).
 // openai/gpt-oss-120b:free does not list it in supported_parameters but is included
 // here intentionally — it handles json_object gracefully in practice.
-const JSON_MODE_MODELS = new Set([
+export const JSON_MODE_MODELS = new Set([
   "openai/gpt-oss-120b:free",
   "anthropic/claude-haiku-4.5",
   "nvidia/nemotron-3-super-120b-a12b",
@@ -120,7 +153,7 @@ const JSON_MODE_MODELS = new Set([
   "google/gemini-3.1-flash-lite-preview",
 ]);
 
-async function extractInsights(conversationText, apiKey, model, messageCount = 15) {
+export async function extractInsights(conversationText, apiKey, model, messageCount = 15) {
   const maxInsights = Math.ceil(messageCount / 3) + 3;
   const jsonMode = JSON_MODE_MODELS.has(model);
 
@@ -185,36 +218,67 @@ Importance guidance by type (0.0–1.0): decision=0.7-0.9, preference=0.8-1.0, l
   return { insights: parsed, inputTokens: usage.prompt_tokens || 0, outputTokens: usage.completion_tokens || 0 };
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main (only runs when executed as script) ─────────────────────────────────
 
-async function main() {
+async function main(cfg) {
+  const {
+    database_url,
+    openrouter_api_key,
+    brain_scope,
+    extraction_model = "openai/gpt-oss-120b:free",
+    batch_threshold_messages = 15,
+    batch_threshold_minutes = 20,
+    prune_after_days = 30,
+  } = cfg;
+
+  // ── Session lookup ──
+  const sessData = loadSessions(CONFIG_PATH, cfg);
+  const session = sessData.sessions?.[SESSION_ID] || null;
+
+  let cursor;
+  if (!session) {
+    cursor = 0;
+  } else if (session.status === "done") {
+    // Check if transcript has new content since last processing
+    let fileMtime = 0;
+    try { fileMtime = statSync(TRANSCRIPT_PATH).mtimeMs; } catch (_) { process.exit(0); }
+    if (fileMtime <= (session.last_mtime || 0)) process.exit(0); // nothing new
+    cursor = session.last_processed_index || 0;
+  } else {
+    cursor = session.last_processed_index || 0;
+  }
+
   const allMessages = parseTranscript(TRANSCRIPT_PATH);
-
-  // Reset cursor if new session
-  const isNewSession = SESSION_ID && SESSION_ID !== last_session_id;
-  const cursor = isNewSession ? 0 : last_processed_index;
-
   const newMessages = allMessages.slice(cursor);
 
   // ── Threshold check (cheap — no API calls yet) ──
   const messageThresholdMet = newMessages.length >= batch_threshold_messages;
-  const timeThresholdMet = minutesSince(last_capture_at) >= batch_threshold_minutes;
+  const timeThresholdMet = minutesSince(session?.last_capture_at) >= batch_threshold_minutes;
 
   if (!messageThresholdMet && !timeThresholdMet) {
-    // Not enough new content yet — exit silently
-    if (isNewSession) {
-      saveConfig(CONFIG_PATH, { ...cfg, last_session_id: SESSION_ID, last_processed_index: 0 });
-    }
+    sessData.sessions[SESSION_ID] = {
+      ...(session || {}),
+      last_processed_index: cursor,
+      transcript_path: TRANSCRIPT_PATH,
+      status: "active",
+    };
+    saveSessions(CONFIG_PATH, sessData, prune_after_days);
     return;
   }
 
   // ── Content gate ──
-  const hasMeaningfulText = newMessages.some((msg) => {
-    const text = extractText(msg);
-    return text.trim().length > 50;
-  });
+  const hasMeaningfulText = newMessages.some((msg) => extractText(msg).trim().length > 50);
   if (!hasMeaningfulText) {
-    saveConfig(CONFIG_PATH, { ...cfg, last_session_id: SESSION_ID, last_processed_index: allMessages.length });
+    let fileMtime = 0;
+    try { fileMtime = statSync(TRANSCRIPT_PATH).mtimeMs; } catch (_) {}
+    sessData.sessions[SESSION_ID] = {
+      last_processed_index: allMessages.length,
+      last_capture_at: session?.last_capture_at || null,
+      last_mtime: fileMtime,
+      transcript_path: TRANSCRIPT_PATH,
+      status: "done",
+    };
+    saveSessions(CONFIG_PATH, sessData, prune_after_days);
     return;
   }
 
@@ -306,16 +370,32 @@ async function main() {
     await pool.end();
   }
 
-  // ── Update cursor ──
-  saveConfig(CONFIG_PATH, {
-    ...cfg,
-    last_session_id: SESSION_ID,
+  // ── Update session ──
+  let fileMtime = 0;
+  try { fileMtime = statSync(TRANSCRIPT_PATH).mtimeMs; } catch (_) {}
+  sessData.sessions[SESSION_ID] = {
     last_processed_index: allMessages.length,
     last_capture_at: new Date().toISOString(),
-  });
+    last_mtime: fileMtime,
+    transcript_path: TRANSCRIPT_PATH,
+    status: "done",
+  };
+  saveSessions(CONFIG_PATH, sessData, prune_after_days);
 }
 
-main().catch((err) => {
-  process.stderr.write(`[autocapture] Fatal error: ${err.message}\n`);
-  process.exit(0); // Never block anything
-});
+if (isMain) {
+  // Load config early for the enabled check (guard before any async work)
+  let cfg;
+  try {
+    cfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  } catch (_) {
+    process.exit(0);
+  }
+  if (!cfg.enabled) process.exit(0);
+
+  main(cfg).catch((err) => {
+    process.stderr.write(`[autocapture] Fatal error: ${err.message}\n`);
+    if (CONFIG_PATH) logError(CONFIG_PATH, SESSION_ID, err);
+    process.exit(0); // Never block anything
+  });
+}

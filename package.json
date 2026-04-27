@@ -5,14 +5,26 @@
   "main": "server.mjs",
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration"
   },
-  "keywords": ["mcp", "brain", "semantic-search", "embeddings"],
+  "keywords": [
+    "mcp",
+    "brain",
+    "semantic-search",
+    "embeddings"
+  ],
   "author": {
     "name": "Robert Sfeir",
     "email": "robert@sfeir.design"
   },
   "license": "ISC",
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "express": "^5.2.1",
