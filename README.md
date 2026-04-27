@@ -67,7 +67,7 @@ Config lives at `~/.mybrain/<name>/.autocapture-config.json` (chmod 600). Key se
 
 Per-session cursors are tracked separately in `~/.mybrain/<name>/.sessions.json` (auto-created). Deleting this file resets all session cursors — thoughts already captured are unaffected, but the next sweep may re-analyze recent sessions (dedup prevents double-captures).
 
-Use `/mybrain-autocapture-status` to monitor what's been captured and `/mybrain-autocapture-off` to pause Layer 2 (Layer 1 proactive capture remains active independently).
+Use `/mybrain-autocapture-status` to monitor what's been captured. `/mybrain-autocapture-off` disables both layers — Layer 2 (background) and Layer 1 (removes the proactive instruction from `~/.claude/CLAUDE.md`). `/mybrain-autocapture-on` restores both.
 
 ---
 

@@ -40,9 +40,7 @@ Warnings      │ 1 truncation event on 2026-04-22 — some content from a large
 
 5. If auto-capture is DISABLED, add a note:
 ```
-              │ Run /mybrain-autocapture-on to re-enable background capture.
-              │ Layer 1 (proactive in-session capture) is always active when mybrain
-              │ MCP tools are connected.
+              │ Both layers are off. Run /mybrain-autocapture-on to re-enable.
 ```
 
 6. If the config file is not found, tell the user: "Auto-capture has not been configured yet. Run /mybrain-setup to enable it."
