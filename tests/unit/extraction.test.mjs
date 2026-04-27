@@ -112,11 +112,11 @@ describe("getEmbedding", () => {
 // ─── JSON_MODE_MODELS ─────────────────────────────────────────────────────────
 
 describe("JSON_MODE_MODELS", () => {
-  it("SP-20 contains the default extraction model", () => {
+  it("SP-20a JSON_MODE_MODELS contains the default extraction model", () => {
     expect(JSON_MODE_MODELS.has("openai/gpt-oss-120b:free")).toBe(true);
   });
 
-  it("SP-21 does not contain an unknown free model", () => {
+  it("SP-20b JSON_MODE_MODELS does not contain an unknown free model", () => {
     expect(JSON_MODE_MODELS.has("meta-llama/llama-3.1-8b-instruct:free")).toBe(false);
   });
 });

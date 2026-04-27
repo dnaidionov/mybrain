@@ -67,18 +67,18 @@ describe.skipIf(skip)("capture_thought – direct DB", () => {
     }
   });
 
-  it("CT-03 content = empty string is rejected (NOT NULL + check)", async () => {
-    // Empty string violates application-level validation (content.trim().length < 10)
-    // At DB level, content is NOT NULL; empty is technically allowed but we test the constraint
+  it("CT-03 empty string content is accepted at DB level (rejection is at the Zod/MCP layer)", async () => {
+    // The DB has no CHECK constraint preventing empty strings — that validation lives in
+    // the application layer (Zod schema). Verify the DB itself allows an empty string insert.
     const { rows } = await pool.query(
-      `SELECT count(*) as c FROM thoughts WHERE content = '' AND metadata @> '{"_test":true}'`
+      `INSERT INTO thoughts (content, embedding, thought_type, source_agent, source_phase, importance, metadata)
+       VALUES ('', $1, 'insight', 'claude', 'build', 0.5, '{"_test":true}')
+       RETURNING id`,
+      [pgvector.toSql(Array(1536).fill(0))]
     );
-    // We just verify the column is NOT NULL — inserting null should fail
-    await expect(
-      pool.query(`INSERT INTO thoughts (content, embedding, thought_type, source_agent, source_phase, importance)
-                  VALUES (NULL, $1, 'insight', 'claude', 'build', 0.5)`,
-        [pgvector.toSql(Array(1536).fill(0))])
-    ).rejects.toThrow();
+    expect(rows[0].id).toBeTruthy();
+    // cleanup
+    await pool.query(`DELETE FROM thoughts WHERE id = $1`, [rows[0].id]);
   });
 
   it("CT-04 null content violates NOT NULL constraint", async () => {
