@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Periodic sweep for idle/abandoned Claude Code sessions.
 // Invoked by CronCreate on a configurable interval (default: 30 min).
-// Finds session JSONL files with unprocessed content that haven't grown in N minutes,
-// and triggers stop-process.mjs for each one.
+// Finds session JSONL files that are idle and have unprocessed content,
+// then triggers stop-process.mjs for each one — serially, cap at 5.
 import { readdirSync, statSync, readFileSync, existsSync } from "fs";
 import { spawnSync } from "child_process";
 import { join, dirname } from "path";
@@ -27,11 +27,16 @@ if (!cfg.enabled) process.exit(0);
 
 const { batch_threshold_minutes = 20 } = cfg;
 
+// ─── Sessions map ─────────────────────────────────────────────────────────────
+// Derived from same directory as the autocapture config.
+
+const sessPath = join(dirname(CONFIG_PATH), ".sessions.json");
+let sessData = { sessions: {} };
+try {
+  sessData = JSON.parse(readFileSync(sessPath, "utf8"));
+} catch (_) {}
+
 // ─── Find Claude Code transcript directory ────────────────────────────────────
-// Claude Code stores session transcripts in:
-//   ~/.claude/projects/<encoded-project-path>/<session-uuid>.jsonl
-// The transcript_path in Stop hook stdin points to the exact file.
-// For sweep purposes, we scan all project directories.
 
 const claudeDir = join(homedir(), ".claude", "projects");
 
@@ -42,45 +47,47 @@ if (!existsSync(claudeDir)) {
 const now = Date.now();
 const idleThresholdMs = batch_threshold_minutes * 60 * 1000;
 
-function findIdleSessions(baseDir) {
+function findSessions(baseDir) {
   const sessions = [];
   try {
     for (const projectDir of readdirSync(baseDir)) {
       const projectPath = join(baseDir, projectDir);
-      if (!statSync(projectPath).isDirectory()) continue;
-      for (const file of readdirSync(projectPath)) {
-        if (!file.endsWith(".jsonl")) continue;
-        const filePath = join(projectPath, file);
-        const stat = statSync(filePath);
-        const ageMs = now - stat.mtimeMs;
-        if (ageMs >= idleThresholdMs) {
-          // Extract session ID from filename (UUID before .jsonl)
-          const sessionId = file.replace(".jsonl", "");
-          sessions.push({ sessionId, filePath, ageMs });
+      try { if (!statSync(projectPath).isDirectory()) continue; } catch (_) { continue; }
+      try {
+        for (const file of readdirSync(projectPath)) {
+          if (!file.endsWith(".jsonl")) continue;
+          const filePath = join(projectPath, file);
+          try {
+            const st = statSync(filePath);
+            sessions.push({
+              sessionId: file.replace(".jsonl", ""),
+              filePath,
+              mtimeMs: st.mtimeMs,
+              ageMs: now - st.mtimeMs,
+            });
+          } catch (_) { /* unreadable file */ }
         }
-      }
+      } catch (_) { /* unreadable directory */ }
     }
-  } catch (_) { /* permission errors etc */ }
+  } catch (_) { /* base dir unreadable */ }
   return sessions;
 }
 
-const idleSessions = findIdleSessions(claudeDir);
-
-// Check which sessions have unprocessed content.
-// Note: the config cursor tracks only the last session — older sessions restart from 0,
-// but dedup in stop-process.mjs prevents duplicate insertions.
-const { last_session_id, last_processed_index = 0 } = cfg;
+const allSessions = findSessions(claudeDir);
 
 const sessionsToProcess = [];
-for (const { sessionId, filePath } of idleSessions) {
-  try {
-    const lines = readFileSync(filePath, "utf8").split("\n").filter(Boolean);
-    const cursor = sessionId === last_session_id ? last_processed_index : 0;
-    if (lines.length > cursor) sessionsToProcess.push({ sessionId, filePath });
-  } catch (_) { /* skip unreadable sessions */ }
+for (const { sessionId, filePath, mtimeMs, ageMs } of allSessions) {
+  // Only consider files that have been idle long enough for the stop hook to have fired its last time
+  if (ageMs < idleThresholdMs) continue;
+
+  const sess = sessData.sessions?.[sessionId];
+  // Skip sessions already fully processed where nothing new has arrived
+  if (sess?.status === "done" && mtimeMs <= (sess.last_mtime || 0)) continue;
+
+  sessionsToProcess.push({ sessionId, filePath });
 }
 
-// Process serially (cap at 5) to avoid concurrent config writes and unbounded spawning.
+// Process serially (cap at 5) to avoid concurrent config/sessions writes and unbounded spawning.
 const MAX_SESSIONS = 5;
 for (const { sessionId, filePath } of sessionsToProcess.slice(0, MAX_SESSIONS)) {
   spawnSync(
