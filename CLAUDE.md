@@ -48,7 +48,7 @@ psql "$DATABASE_URL" -f templates/schema.sql
 
 ## Architecture
 
-**`server.mjs`** is the entire MCP server — no build step, single ES module file. It detects transport mode from `process.argv[2]` (`stdio` default, `http` explicit). Both modes call the same `registerTools(srv)` function which defines the four MCP tools.
+**`server.mjs`** is the entire MCP server — no build step, single ES module file. It detects transport mode from `MCP_TRANSPORT` env var, then `process.argv[2]`, defaulting to `stdio`. Both modes call the same `registerTools(srv)` function which defines the four MCP tools.
 
 **Tool → DB flow** (canonical tool descriptions in `README.md` → "What You Get"):
 1. `capture_thought` / `search_thoughts` — call `getEmbedding()` (OpenRouter HTTP) → write/query PostgreSQL
