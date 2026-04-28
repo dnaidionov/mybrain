@@ -35,8 +35,8 @@ Five skills ship with the plugin:
 | `/mybrain-setup` | Interactive setup wizard (Docker or RDS) + auto-capture configuration |
 | `/mybrain-overview` | Architecture, tools, and usage reference |
 | `/mybrain-autocapture-status` | Show auto-capture state, thresholds, token usage, and warnings |
-| `/mybrain-autocapture-on` | Enable background auto-capture |
-| `/mybrain-autocapture-off` | Disable background auto-capture |
+| `/mybrain-autocapture-on` | Enable auto-capture (both layers: background + proactive) |
+| `/mybrain-autocapture-off` | Disable auto-capture (both layers: background + proactive) |
 
 ---
 
@@ -308,6 +308,7 @@ Each brain instance uses two ports (default: MCP 8787, Postgres 5433). Run `/myb
 2. Check `~/.mybrain/<name>/.autocapture-config.json` exists and `"enabled": true`
 3. Run `/mybrain-autocapture-status` to see current state
 4. Check that `OPENROUTER_API_KEY` is set in the environment (not just the plugin config)
+5. For idle session sweep: verify the crontab entry exists — `crontab -l | grep sweep`. If missing, re-run `/mybrain-autocapture-on` to restore it.
 
 **`brain_stats` doesn't show token usage.**
 The `AUTOCAPTURE_CONFIG` env var must be set on the MCP server registration pointing to your config file. Re-run the auto-capture setup step from `/mybrain-setup` or add `-e AUTOCAPTURE_CONFIG=...` to your `claude mcp add` command.
