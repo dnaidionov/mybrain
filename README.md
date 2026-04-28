@@ -58,7 +58,7 @@ The default extraction model is `openai/gpt-oss-120b:free` — chosen for its co
 | `nvidia/nemotron-3-super-120b-a12b:free` | Free |
 | `anthropic/claude-haiku-4.5` | Paid |
 
-An idle sweep (registered via CronCreate) catches abandoned threads that the Stop hook never fires for again.
+An idle sweep (registered in the system crontab) catches abandoned threads that the Stop hook never fires for again.
 
 Config lives at `~/.mybrain/<name>/.autocapture-config.json` (chmod 600). Key settings:
 
