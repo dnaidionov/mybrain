@@ -318,13 +318,15 @@ Also set `AUTOCAPTURE_CONFIG` as an env var on the MCP server registration (in `
 
 ### AC3: Register the periodic sweep cron
 
-Use the `CronCreate` tool to register a recurring sweep job:
+Add an entry to the system crontab so the sweep runs locally, survives reboots, and works without Claude being open. Use `$HOME` (not `~`) because crontab does not expand tilde:
 
+```bash
+(crontab -l 2>/dev/null; echo "*/<sweep_interval_minutes> * * * * AUTOCAPTURE_CONFIG=$HOME/.mybrain/<name>/.autocapture-config.json node <plugin-root>/hooks/sweep.mjs >> $HOME/.mybrain/<name>/sweep.log 2>&1") | crontab -
 ```
-Schedule: every <sweep_interval_minutes> minutes
-Command: node <plugin-root>/hooks/sweep.mjs
-Env: AUTOCAPTURE_CONFIG=~/.mybrain/<name>/.autocapture-config.json
-```
+
+Replace `<sweep_interval_minutes>` with the value from the config (default: `30`), `<name>` with the brain name, and `<plugin-root>` with the absolute path to the plugin root (where `server.mjs` lives).
+
+Verify with `crontab -l` — the new entry should appear at the bottom.
 
 ### AC4: Add the proactive instruction to global CLAUDE.md
 
