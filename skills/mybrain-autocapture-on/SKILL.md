@@ -29,9 +29,18 @@ Enables both capture layers:
    ```
    Merge carefully — preserve any existing hooks.
 
-5. Check `~/.claude/CLAUDE.md` for the mybrain proactive instruction block (marker: `<!-- mybrain:capture_thought proactively -->`). If absent, read the canonical block from `<plugin-root>/templates/proactive-instruction.md` and append its full contents to `~/.claude/CLAUDE.md`.
+5. Verify the sweep crontab entry is present:
+   ```bash
+   crontab -l 2>/dev/null | grep "stop-autocapture\|sweep.mjs"
+   ```
+   If missing, re-add it (replace values from the config):
+   ```bash
+   (crontab -l 2>/dev/null; echo "*/<sweep_interval_minutes> * * * * AUTOCAPTURE_CONFIG=$HOME/.mybrain/<name>/.autocapture-config.json node <plugin-root>/hooks/sweep.mjs >> $HOME/.mybrain/<name>/sweep.log 2>&1") | crontab -
+   ```
 
-6. Confirm to the user:
+6. Check `~/.claude/CLAUDE.md` for the mybrain proactive instruction block (marker: `<!-- mybrain:capture_thought proactively -->`). If absent, read the canonical block from `<plugin-root>/templates/proactive-instruction.md` and append its full contents to `~/.claude/CLAUDE.md`.
+
+7. Confirm to the user:
    ```
    Auto-capture ENABLED (both layers)
 
